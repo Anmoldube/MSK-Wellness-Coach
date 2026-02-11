@@ -35,7 +35,11 @@ interface Product {
 
 type RecommendationType = 'exercises' | 'programs' | 'products';
 
-function RecommendationList() {
+interface RecommendationListProps {
+    userId?: string;
+}
+
+function RecommendationList({ }: RecommendationListProps = {}) {
     const [activeTab, setActiveTab] = useState<RecommendationType>('exercises');
     const [exercises, setExercises] = useState<Exercise[]>([]);
     const [programs, setPrograms] = useState<CareProgram[]>([]);

@@ -15,6 +15,7 @@ export interface ChatRequest {
     message: string;
     conversation_id?: string;
     include_context?: boolean;
+    user_id?: string;
 }
 
 export interface ChatResponse {

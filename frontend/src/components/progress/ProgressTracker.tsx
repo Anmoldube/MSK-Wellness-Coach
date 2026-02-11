@@ -1,15 +1,6 @@
 import { useState, useEffect } from 'react';
 import './ProgressTracker.css';
 
-interface ProgressEntry {
-    id: string;
-    metric_name: string;
-    metric_value: number;
-    metric_unit: string | null;
-    recorded_at: string;
-    notes: string | null;
-}
-
 interface ProgressTrackerProps {
     userId: string;
 }

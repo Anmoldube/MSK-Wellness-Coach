@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import ChatInterface from './components/chat/ChatInterface';
-import Sidebar from './components/chat/Sidebar';
 import ReportDashboard from './components/dashboard/ReportDashboard';
 import RecommendationList from './components/recommendations/RecommendationList';
 import ProfileForm from './components/profile/ProfileForm';
