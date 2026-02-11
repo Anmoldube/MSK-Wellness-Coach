@@ -9,6 +9,7 @@ env/
 
 # Local data
 backend/data/
+backend/requirements.txt
 *.db
 *.sqlite
 *.sqlite3
