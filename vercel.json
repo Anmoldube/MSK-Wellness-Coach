@@ -2,7 +2,6 @@
   "version": 2,
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "pip3 install --break-system-packages -r backend/requirements-vercel.txt || pip install -r backend/requirements-vercel.txt",
   "builds": [
     {
       "src": "api/index.py",
