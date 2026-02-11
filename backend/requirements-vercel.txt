@@ -1,0 +1,39 @@
+# Vercel Serverless Optimized Dependencies
+# Lightweight version for faster cold starts
+
+# Core Framework
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+mangum>=0.17.0
+
+# HTTP Client
+httpx>=0.27.0
+aiofiles>=23.2.0
+
+# LLM Integration (include only what you need)
+groq>=0.4.1
+fastapi-poe>=0.0.36
+anthropic>=0.39.0
+
+# Database (SQLite only for serverless)
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+
+# Vector Database
+chromadb>=0.4.22
+
+# Environment
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=24.1.0
+python-json-logger>=2.0.7
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# File Processing
+python-multipart>=0.0.6
+Pillow>=10.2.0

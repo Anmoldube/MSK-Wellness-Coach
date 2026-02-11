@@ -1,0 +1,46 @@
+🚀 VERCEL DEPLOYMENT CHECKLIST
+================================
+
+Before deploying:
+☐ Get API key (Groq/POE/Anthropic)
+☐ Create GitHub account
+☐ Create Vercel account
+☐ Push code to GitHub
+
+During deployment:
+☐ Import project to Vercel
+☐ Add environment variables (AI_PROVIDER, API_KEY)
+☐ Click Deploy
+☐ Wait for build to complete
+
+After deployment:
+☐ Test: https://your-app.vercel.app/health
+☐ Test: https://your-app.vercel.app/docs
+☐ Test: https://your-app.vercel.app (chat interface)
+☐ Send a test message
+
+Files created for deployment:
+✅ vercel.json (main config)
+✅ api/index.py (serverless entry point)
+✅ backend/requirements-vercel.txt (dependencies)
+✅ .vercelignore (exclude files)
+✅ .env.production (example env vars)
+✅ VERCEL_DEPLOYMENT_GUIDE.md (full guide)
+✅ QUICK_DEPLOY.md (5-minute guide)
+
+Quick Start Commands:
+---------------------
+1. Push to GitHub:
+   git init
+   git add .
+   git commit -m "Ready for Vercel"
+   git remote add origin https://github.com/USERNAME/REPO.git
+   git push -u origin main
+
+2. Deploy to Vercel:
+   Go to: https://vercel.com/new
+   Import your GitHub repo
+   Add API key in environment variables
+   Click Deploy!
+
+Need help? Read VERCEL_DEPLOYMENT_GUIDE.md or QUICK_DEPLOY.md

@@ -57,8 +57,24 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_PER_MINUTE: int = 60
     
-    # CORS
-    ALLOWED_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "http://frontend:5173"]
+    # CORS - Dynamic for Vercel deployment
+    @property
+    def ALLOWED_ORIGINS(self) -> list:
+        origins = [
+            "http://localhost:5173", 
+            "http://localhost:3000", 
+            "http://frontend:5173",
+        ]
+        # Add Vercel deployment URLs
+        vercel_url = os.getenv("VERCEL_URL")
+        if vercel_url:
+            origins.append(f"https://{vercel_url}")
+        
+        # Allow all preview deployments in production
+        if not self.DEBUG:
+            origins.append("https://*.vercel.app")
+        
+        return origins
     
     class Config:
         env_file = ".env"

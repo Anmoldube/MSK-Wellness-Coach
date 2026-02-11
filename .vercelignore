@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local data
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Development
+.env
+.env.local
+*.log
+
+# Build artifacts
+frontend/dist/
+frontend/.vite/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (optional - remove if you want these deployed)
+*.md
+!README.md
