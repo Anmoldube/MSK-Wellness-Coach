@@ -3,31 +3,50 @@ import ChatInterface from './components/chat/ChatInterface';
 import Sidebar from './components/chat/Sidebar';
 import ReportDashboard from './components/dashboard/ReportDashboard';
 import RecommendationList from './components/recommendations/RecommendationList';
+import ProfileForm from './components/profile/ProfileForm';
+import ProgressTracker from './components/progress/ProgressTracker';
 import './App.css';
 
-type View = 'chat' | 'reports' | 'recommendations' | 'progress';
+type View = 'chat' | 'reports' | 'recommendations' | 'progress' | 'profile';
 
 function App() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [currentView, setCurrentView] = useState<View>('chat');
+    const [currentView, setCurrentView] = useState<View>('profile');
+    const [userId, setUserId] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string | null>(null);
+
+    const handleProfileCreated = (id: string, name: string) => {
+        setUserId(id);
+        setUserName(name);
+        setCurrentView('chat');
+    };
 
     const renderView = () => {
+        // Show profile form if no user
+        if (!userId && currentView !== 'profile') {
+            return <ProfileForm onProfileCreated={handleProfileCreated} />;
+        }
+
         switch (currentView) {
+            case 'profile':
+                return <ProfileForm onProfileCreated={handleProfileCreated} />;
             case 'chat':
-                return <ChatInterface />;
+                return userId ? <ChatInterface userId={userId} /> : <ChatInterface userId="" />;
             case 'reports':
                 return <ReportDashboard />;
             case 'recommendations':
-                return <RecommendationList />;
+                return userId ? <RecommendationList userId={userId} /> : <RecommendationList />;
             case 'progress':
-                return (
+                return userId ? (
+                    <ProgressTracker userId={userId} />
+                ) : (
                     <div className="coming-soon">
                         <h2>📈 Progress Tracking</h2>
-                        <p>Coming soon! Track your improvement over time.</p>
+                        <p>Please create a profile first to track your progress.</p>
                     </div>
                 );
             default:
-                return <ChatInterface />;
+                return userId ? <ChatInterface userId={userId} /> : <ChatInterface userId="" />;
         }
     };
 
@@ -64,30 +83,44 @@ function App() {
                     </div>
                     <div className="logo-text">
                         <h1>MSK Wellness Coach</h1>
-                        <span className="logo-subtitle">Your Personal Health Companion</span>
+                        <span className="logo-subtitle">
+                            {userName ? `Welcome, ${userName}! 👋` : 'Your Personal Health Companion'}
+                        </span>
                     </div>
                 </div>
 
                 {/* View Tabs (visible on larger screens) */}
                 <nav className="header-nav">
-                    <button
-                        className={`nav-tab ${currentView === 'chat' ? 'active' : ''}`}
-                        onClick={() => setCurrentView('chat')}
-                    >
-                        💬 Chat
-                    </button>
-                    <button
-                        className={`nav-tab ${currentView === 'reports' ? 'active' : ''}`}
-                        onClick={() => setCurrentView('reports')}
-                    >
-                        📊 Reports
-                    </button>
-                    <button
-                        className={`nav-tab ${currentView === 'recommendations' ? 'active' : ''}`}
-                        onClick={() => setCurrentView('recommendations')}
-                    >
-                        💪 Exercises
-                    </button>
+                    {!userId && (
+                        <button
+                            className={`nav-tab ${currentView === 'profile' ? 'active' : ''}`}
+                            onClick={() => setCurrentView('profile')}
+                        >
+                            👤 Profile
+                        </button>
+                    )}
+                    {userId && (
+                        <>
+                            <button
+                                className={`nav-tab ${currentView === 'chat' ? 'active' : ''}`}
+                                onClick={() => setCurrentView('chat')}
+                            >
+                                💬 Chat
+                            </button>
+                            <button
+                                className={`nav-tab ${currentView === 'recommendations' ? 'active' : ''}`}
+                                onClick={() => setCurrentView('recommendations')}
+                            >
+                                💪 Exercises
+                            </button>
+                            <button
+                                className={`nav-tab ${currentView === 'progress' ? 'active' : ''}`}
+                                onClick={() => setCurrentView('progress')}
+                            >
+                                📈 Progress
+                            </button>
+                        </>
+                    )}
                 </nav>
 
                 <div className="header-actions">
@@ -101,19 +134,12 @@ function App() {
             </header>
 
             {/* Main Content */}
-            <div className="app-body">
-                {/* Sidebar */}
-                <Sidebar
-                    isOpen={sidebarOpen}
-                    onClose={() => setSidebarOpen(false)}
-                />
-
-                {/* Main View */}
-                <main className="app-main">
-                    {renderView()}
-                </main>
-            </div>
+            {/* Main View */}
+            <main className="app-main">
+                {renderView()}
+            </main>
         </div>
+
     );
 }
 

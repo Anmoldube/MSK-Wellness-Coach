@@ -100,3 +100,13 @@ class ReportSummary(BaseModel):
     overall_score: Optional[float]
     risk_level: RiskLevel
     parameter_count: int
+
+
+class ReportUploadResponse(BaseModel):
+    """Response for file upload"""
+    report_id: str
+    user_id: str
+    filename: str
+    file_path: str
+    upload_time: datetime
+    message: str

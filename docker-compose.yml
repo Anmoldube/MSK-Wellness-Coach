@@ -1,24 +1,55 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: msk_postgres
+    environment:
+      POSTGRES_USER: msk_user
+      POSTGRES_PASSWORD: msk_password
+      POSTGRES_DB: msk_chatbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msk_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - msk_network
+
   # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: msk_backend
     ports:
       - "8000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - DATABASE_URL=postgresql+asyncpg://msk_user:msk_password@postgres:5432/msk_chatbot
+      - CHROMA_PERSIST_DIR=/app/data/chromadb
+      - UPLOAD_DIR=/app/data/uploads
     volumes:
       - ./backend:/app
+      - backend_data:/app/data
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - msk_network
 
   # Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: msk_frontend
     ports:
       - "5173:5173"
     volumes:
@@ -27,18 +58,15 @@ services:
     depends_on:
       - backend
     command: npm run dev -- --host
+    networks:
+      - msk_network
 
-  # PostgreSQL (for future use)
-  # postgres:
-  #   image: postgres:15
-  #   environment:
-  #     POSTGRES_USER: msk_user
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-  #     POSTGRES_DB: msk_chatbot
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
+volumes:
+  postgres_data:
+    driver: local
+  backend_data:
+    driver: local
 
-# volumes:
-#   postgres_data:
+networks:
+  msk_network:
+    driver: bridge

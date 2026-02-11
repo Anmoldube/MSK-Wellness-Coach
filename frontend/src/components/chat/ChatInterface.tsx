@@ -4,14 +4,18 @@ import MessageInput from './MessageInput';
 import SuggestedQuestions from './SuggestedQuestions';
 import './ChatInterface.css';
 
-function ChatInterface() {
+interface ChatInterfaceProps {
+    userId: string;
+}
+
+function ChatInterface({ userId }: ChatInterfaceProps) {
     const {
         messages,
         isLoading,
         suggestedQuestions,
         sendMessage,
         messagesEndRef,
-    } = useChat();
+    } = useChat(userId);
 
     return (
         <div className="chat-interface">

@@ -5,7 +5,7 @@ import { ChatMessage } from '../types/chat.types';
 // Generate unique ID
 const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-export function useChat() {
+export function useChat(userId: string) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
@@ -81,6 +81,7 @@ What would you like to explore today?`,
                 message: content.trim(),
                 conversation_id: conversationId || undefined,
                 include_context: true,
+                user_id: userId,
             });
 
             // Update conversation ID

@@ -24,6 +24,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: Optional[str] = None
     include_context: bool = True
+    user_id: Optional[str] = None
 
 
 class FunctionCall(BaseModel):

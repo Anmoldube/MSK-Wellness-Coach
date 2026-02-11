@@ -1,64 +1,84 @@
-# MSK Wellness AI Chatbot
+# MSK Wellness AI Chatbot 🎮💪
 
-An intelligent conversational AI chatbot that analyzes musculoskeletal (MSK) wellness parameters and provides personalized recommendations for exercises, care programs, and supportive products.
+An intelligent AI-powered chatbot that analyzes **game/sport performance data** and provides **personalized exercise recommendations** to help athletes and gamers improve their physical performance.
 
-## Features
+## 🌟 Features
 
-- 📊 **Report Analysis** - Interpret and explain MSK assessment results
-- 💪 **Exercise Recommendations** - Personalized exercises for balance, ROM, strength
-- 📋 **Care Programs** - Structured wellness programs from healthcare partners
-- 🛒 **Product Suggestions** - Neutraceuticals and ergonomic aids
-- 💬 **Natural Conversations** - Multi-turn dialogue with context awareness
+- 👤 **Simple Profile Creation** - No authentication, just enter your data
+- 🎮 **Performance Data Input** - Gaming metrics (reaction time, accuracy, score)
+- 💪 **AI-Powered Recommendations** - Personalized exercises based on YOUR data
+- 📈 **Progress Tracking** - Track improvement over time with analytics
+- 🔍 **Smart Matching** - ChromaDB vector search for relevant exercises
+- 📁 **File Upload** - Upload performance reports (PDF, images, CSV)
+- 💾 **Full Persistence** - PostgreSQL database, no data loss
+- 🚀 **Production Ready** - Logging, error handling, rate limiting
 
-## Tech Stack
+## 🏗️ Tech Stack
 
-- **Backend**: FastAPI (Python 3.11+)
+- **Backend**: FastAPI (Python 3.11+) + SQLAlchemy + PostgreSQL
 - **Frontend**: React 18 + TypeScript + Vite
-- **LLM**: Claude API (Anthropic)
+- **AI/ML**: Anthropic Claude + ChromaDB Vector Search
+- **Database**: PostgreSQL + ChromaDB
 - **Styling**: Modern CSS with glassmorphism
 
-## Quick Start
+## ⚡ Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- (Optional) Anthropic API key for Claude integration
+- **Docker & Docker Compose** (recommended)
+- OR: Python 3.11+ and Node.js 18+ (for local dev)
 
-### 1. Backend Setup
+### 🚀 Option 1: Docker (One Command!)
 
+**Windows:**
+```powershell
+.\start.ps1
+```
+
+**Mac/Linux:**
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**Or manually:**
+```bash
+docker-compose up -d
+```
+
+Then open: **http://localhost:5173** 🎉
+
+### 🛠️ Option 2: Local Development
+
+**Step 1: Start PostgreSQL**
+```bash
+docker-compose -f docker-compose-simple.yml up -d
+```
+
+**Step 2: Backend**
 ```bash
 cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# (Optional) Set API key for Claude
-export ANTHROPIC_API_KEY="your-key-here"
-
-# Start server
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs available at: http://localhost:8000/docs
-
-### 2. Frontend Setup
-
+**Step 3: Frontend**
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
-Open http://localhost:5173
+Open: http://localhost:5173
+
+---
+
+## 📖 Complete Documentation
+
+- **[START_HERE.md](START_HERE.md)** - Testing guide with examples
+- **[README_IMPLEMENTATION.md](README_IMPLEMENTATION.md)** - Full technical docs
+- **[QUICK_START.md](QUICK_START.md)** - 3-step quick start
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Production deployment
 
 ## Project Structure
 
@@ -81,19 +101,48 @@ msk-chatbot/
 └── README.md
 ```
 
-## API Endpoints
+## 🎯 How It Works
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/chat/message` | Send chat message |
-| GET | `/api/v1/chat/conversations` | Get conversation history |
-| GET | `/api/v1/reports/latest` | Get latest assessment |
-| GET | `/api/v1/recommendations/exercises` | Get exercise recommendations |
+1. **Create Profile** - Enter your name and performance data
+2. **AI Analyzes** - System identifies strengths and weaknesses
+3. **Get Recommendations** - Personalized exercises via AI vector search
+4. **Track Progress** - Record metrics and see improvement trends
 
-## Demo Mode
+## 📋 API Endpoints
 
-The chatbot works without an API key using intelligent mock responses. This is great for testing and development.
+### Profile & Users
+- `POST /api/v1/profile` - Create user profile
+- `GET /api/v1/profile/{user_id}` - Get profile
+- `PUT /api/v1/profile/{user_id}` - Update profile
 
-## License
+### Personalized Recommendations ⭐
+- `GET /api/v1/recommendations/exercises/{user_id}` - AI-powered exercises
+- `GET /api/v1/recommendations/programs/{user_id}` - Care programs
+
+### Progress Tracking ⭐
+- `POST /api/v1/progress/{user_id}` - Record progress
+- `GET /api/v1/progress/{user_id}/trends` - Get trends
+- `GET /api/v1/progress/{user_id}/summary` - Analytics
+
+### File Upload ⭐
+- `POST /api/v1/upload/report/{user_id}` - Upload files
+- `GET /api/v1/upload/reports/{user_id}` - List reports
+
+### Chat
+- `POST /api/v1/chat/message` - Send message
+- `GET /api/v1/chat/conversations` - History
+
+**Full API docs:** http://localhost:8000/docs
+
+## 🔑 About the API Key
+
+The app works in **demo mode** without an API key! Your provided key format is unusual, but the app will:
+1. Try to use it
+2. Fall back to demo mode if it fails
+3. Still provide intelligent responses
+
+For a real Anthropic key: https://console.anthropic.com/
+
+## 📜 License
 
 MIT

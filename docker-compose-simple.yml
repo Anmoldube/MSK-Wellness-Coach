@@ -1,0 +1,25 @@
+# Simplified docker-compose for quick testing
+version: '3.8'
+
+services:
+  # PostgreSQL Database only (for quick start)
+  postgres:
+    image: postgres:15-alpine
+    container_name: msk_postgres
+    environment:
+      POSTGRES_USER: msk_user
+      POSTGRES_PASSWORD: msk_password
+      POSTGRES_DB: msk_chatbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msk_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

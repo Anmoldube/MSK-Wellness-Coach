@@ -428,3 +428,29 @@ class KnowledgeBaseService:
 
 # Singleton instance
 knowledge_base = KnowledgeBaseService()
+
+
+def get_all_exercises() -> List[Dict[str, Any]]:
+    """
+    Get all exercises as a flat list for vector store indexing
+    
+    Returns:
+        List of all exercise dictionaries with required fields
+    """
+    exercises = knowledge_base.exercises
+    
+    # Transform exercises to include all necessary fields for vector store
+    formatted_exercises = []
+    for ex in exercises:
+        formatted_exercises.append({
+            'id': ex.get('exercise_id', ''),
+            'name': ex.get('name', ''),
+            'description': ' '.join(ex.get('instructions', [])),
+            'category': ex.get('category', ''),
+            'difficulty': ex.get('difficulty', 'intermediate'),
+            'duration': ex.get('sets_reps', ''),
+            'benefits': ex.get('target_parameters', []),
+            'target_areas': ex.get('target_parameters', [])
+        })
+    
+    return formatted_exercises

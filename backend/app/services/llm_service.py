@@ -6,7 +6,6 @@ import os
 
 from app.core.config import settings
 from app.services.knowledge_base import KnowledgeBaseService
-from app.api.endpoints.reports import reports_db, SAMPLE_REPORT
 
 
 class LLMService:
@@ -18,38 +17,192 @@ class LLMService:
     def __init__(self):
         self.knowledge_base = KnowledgeBaseService()
         self.client = None
+        self.poe_client = None
+        self.groq_client = None
         self._init_client()
     
     def _init_client(self):
-        """Initialize Anthropic client if API key is available"""
-        api_key = settings.ANTHROPIC_API_KEY
-        if api_key:
-            try:
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=api_key)
-            except ImportError:
-                print("anthropic package not installed, using mock responses")
+        """Initialize AI client based on provider setting"""
+        print("\n" + "="*80)
+        print("🔧 INITIALIZING LLM CLIENT")
+        print("="*80)
+        
+        provider = settings.AI_PROVIDER.lower()
+        print(f"   AI_PROVIDER from settings: '{provider}'")
+        
+        if provider == "groq":
+            print("   ✓ Provider is 'groq' - attempting to initialize Groq client...")
+            api_key = settings.GROQ_API_KEY
+            print(f"   GROQ_API_KEY exists: {api_key is not None}")
+            print(f"   GROQ_API_KEY length: {len(api_key) if api_key else 0}")
+            
+            if api_key:
+                try:
+                    from groq import Groq
+                    self.groq_client = Groq(api_key=api_key)
+                    print(f"   ✅ Groq client initialized with model: {settings.GROQ_MODEL}")
+                except ImportError as e:
+                    print(f"   ❌ Import error: {e}")
+                    print("   ❌ groq package not installed, using mock responses")
+                except Exception as e:
+                    print(f"   ❌ Unexpected error: {e}")
+            else:
+                print("   ❌ No API key found - GROQ_API_KEY is None or empty!")
+        
+        elif provider == "poe":
+            print("   ✓ Provider is 'poe' - attempting to initialize Poe client...")
+            # Initialize Poe client
+            api_key = settings.POE_API_KEY
+            print(f"   POE_API_KEY exists: {api_key is not None}")
+            print(f"   POE_API_KEY length: {len(api_key) if api_key else 0}")
+            
+            if api_key:
+                print("   ✓ API key found, importing fastapi_poe...")
+                try:
+                    import fastapi_poe as fp
+                    print("   ✓ fastapi_poe imported successfully")
+                    self.poe_client = fp.get_bot_response
+                    self.poe_api_key = api_key
+                    print(f"   ✅ Poe API initialized with bot: {settings.POE_BOT_NAME}")
+                    print(f"   ✅ self.poe_client = {self.poe_client}")
+                except ImportError as e:
+                    print(f"   ❌ Import error: {e}")
+                    print("   ❌ fastapi-poe package not installed, using mock responses")
+                except Exception as e:
+                    print(f"   ❌ Unexpected error: {e}")
+            else:
+                print("   ❌ No API key found - POE_API_KEY is None or empty!")
+        else:
+            print(f"   Provider is '{provider}' - checking for Claude...")
+            # Initialize Anthropic client (default)
+            api_key = settings.ANTHROPIC_API_KEY
+            if api_key:
+                try:
+                    import anthropic
+                    self.client = anthropic.Anthropic(api_key=api_key)
+                    print(f"   ✅ Anthropic client initialized")
+                except ImportError:
+                    print("   ❌ anthropic package not installed, using mock responses")
+        
+        print("="*80 + "\n")
     
     async def chat(
         self,
         user_message: str,
         conversation_history: List[Dict] = None,
-        include_context: bool = True
+        include_context: bool = True,
+        user_context: Dict = None
     ) -> Dict[str, Any]:
         """
         Main chat method that orchestrates the conversation flow.
         """
+        print("\n" + "="*80)
+        print(f"🔵 CHAT METHOD CALLED")
+        print(f"   Message: {user_message[:50]}...")
+        print(f"   User context provided: {user_context is not None}")
+        print(f"   Groq client exists: {self.groq_client is not None}")
+        print(f"   Poe client exists: {self.poe_client is not None}")
+        print(f"   Claude client exists: {self.client is not None}")
+        print("="*80)
+        
         conversation_history = conversation_history or []
         
-        # Load user context
-        user_context = self._get_user_context() if include_context else {}
+        # Use provided user_context or load default context
+        if user_context is None and include_context:
+            user_context = self._get_user_context()
+        elif user_context is None:
+            user_context = {}
+        
+        # If we have Groq client, use it (fastest!)
+        if self.groq_client:
+            print("✅ USING GROQ API")
+            return await self._call_groq(user_message, user_context, conversation_history)
+        
+        # If we have Poe client, use it
+        if self.poe_client:
+            print("✅ USING POE API")
+            return await self._call_poe(user_message, user_context, conversation_history)
         
         # If we have a real Claude client, use it
         if self.client:
+            print("✅ USING CLAUDE API")
             return await self._call_claude(user_message, user_context, conversation_history)
         
         # Otherwise, use intelligent mock responses
+        print("❌ USING MOCK RESPONSES - NO API AVAILABLE")
         return self._generate_mock_response(user_message, user_context)
+    
+    async def _call_groq(
+        self,
+        user_message: str,
+        user_context: Dict,
+        conversation_history: List[Dict]
+    ) -> Dict[str, Any]:
+        """Call Groq API (OpenAI-compatible format)"""
+        print("\n🟢 _call_groq() STARTED")
+        print(f"   Model: {settings.GROQ_MODEL}")
+        
+        try:
+            # Build system prompt
+            system_prompt = self._build_system_prompt()
+            
+            # Build messages with context
+            context_str = self._format_user_context(user_context)
+            
+            if context_str:
+                full_message = f"{context_str}\n\nBased on the profile data above, please answer: {user_message}\n\nRemember: Use the specific name and metrics provided above in your response."
+            else:
+                full_message = user_message
+            
+            # Convert conversation history to Groq format
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            for msg in conversation_history[-10:]:
+                if hasattr(msg, 'role'):
+                    role = "user" if str(msg.role).lower() == "user" else "assistant"
+                    content = msg.content
+                else:
+                    role = "user" if msg.get("role") == "user" else "assistant"
+                    content = msg.get("content", "")
+                messages.append({"role": role, "content": content})
+            
+            # Add current message
+            messages.append({"role": "user", "content": full_message})
+            
+            print(f"   📤 Calling Groq API with {len(messages)} messages...")
+            
+            # Call Groq API (OpenAI-compatible)
+            response = self.groq_client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048,
+                top_p=1,
+                stream=False
+            )
+            
+            response_text = response.choices[0].message.content
+            print(f"   📥 Received {len(response_text)} characters from Groq API")
+            print(f"   ✅ GROQ API CALL SUCCESSFUL")
+            
+            return {
+                "message": response_text.strip(),
+                "function_calls": [],
+                "citations": [],
+                "suggested_questions": self._generate_suggestions(user_message),
+                "metadata": {
+                    "provider": "groq",
+                    "model": settings.GROQ_MODEL,
+                    "has_context": bool(user_context)
+                }
+            }
+            
+        except Exception as e:
+            print(f"❌ GROQ API ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            print("   Falling back to mock response")
+            return self._generate_mock_response(user_message, user_context)
     
     async def _call_claude(
         self,
@@ -84,9 +237,124 @@ class LLMService:
             print(f"Claude API error: {e}")
             return self._generate_mock_response(user_message, user_context)
     
+    async def _call_poe(
+        self,
+        user_message: str,
+        user_context: Dict,
+        conversation_history: List[Dict]
+    ) -> Dict[str, Any]:
+        """Call Poe API"""
+        print("\n🟢 _call_poe() STARTED")
+        print(f"   Bot: {settings.POE_BOT_NAME}")
+        print(f"   API Key length: {len(self.poe_api_key)}")
+        try:
+            import fastapi_poe as fp
+            print("   ✓ fastapi_poe imported")
+            
+            # Build context-aware message
+            context_message = self._build_context_message(user_message, user_context)
+            print(f"   📝 Context message preview (first 500 chars):")
+            print(f"   {context_message[:500]}")
+            print(f"   User context keys: {list(user_context.keys()) if user_context else 'None'}")
+            
+            # Convert conversation history to Poe format
+            messages = []
+            for msg in conversation_history[-10:]:  # Last 10 messages for context
+                # Handle both dict and object formats
+                if hasattr(msg, 'role'):
+                    role = "user" if str(msg.role).lower() == "user" else "bot"
+                    content = msg.content
+                else:
+                    role = "user" if msg.get("role") == "user" else "bot"
+                    content = msg.get("content", "")
+                messages.append(fp.ProtocolMessage(role=role, content=content))
+            
+            # Add current message
+            messages.append(fp.ProtocolMessage(role="user", content=context_message))
+            
+            # Call Poe API
+            print(f"   📤 Calling Poe API with {len(messages)} messages...")
+            response_text = ""
+            async for partial in self.poe_client(
+                messages=messages,
+                bot_name=settings.POE_BOT_NAME,
+                api_key=self.poe_api_key
+            ):
+                if isinstance(partial, fp.MetaResponse):
+                    continue
+                elif isinstance(partial, fp.ErrorResponse):
+                    print(f"Poe API error: {partial.text}")
+                    return self._generate_mock_response(user_message, user_context)
+                else:
+                    response_text += partial.text
+            
+            print(f"   📥 Received {len(response_text)} characters from Poe API")
+            print(f"   ✅ POE API CALL SUCCESSFUL")
+            
+            return {
+                "response": response_text.strip(),
+                "suggestions": self._generate_suggestions(user_message),
+                "metadata": {
+                    "provider": "poe",
+                    "bot": settings.POE_BOT_NAME,
+                    "has_context": bool(user_context)
+                }
+            }
+            
+        except Exception as e:
+            print(f"❌ POE API ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            print("   Falling back to mock response")
+            return self._generate_mock_response(user_message, user_context)
+    
+    def _build_context_message(self, user_message: str, user_context: Dict) -> str:
+        """Build a context-aware message for Poe API"""
+        if not user_context or not user_context.get("name"):
+            return user_message
+        
+        # Build a more explicit context that instructs the AI to use the data
+        context_parts = [
+            "IMPORTANT: You are an MSK wellness coach. The user's actual data is provided below.",
+            "You MUST reference their specific name and metrics in your response to show personalization.\n"
+        ]
+        
+        # Add user profile data
+        name = user_context.get("name")
+        context_parts.append(f"PATIENT: {name}")
+        
+        # Add performance data explicitly
+        perf_data = user_context.get("performance_data", {})
+        if perf_data:
+            context_parts.append(f"\nCURRENT METRICS FOR {name.upper()}:")
+            if perf_data.get("balance") is not None:
+                balance = perf_data.get('balance')
+                context_parts.append(f"• Balance Score: {balance}/100 (THIS IS A KEY METRIC - DISCUSS IT!)")
+            if perf_data.get("reaction_time") is not None:
+                context_parts.append(f"• Reaction Time: {perf_data.get('reaction_time')}ms")
+            if perf_data.get("accuracy") is not None:
+                context_parts.append(f"• Accuracy: {perf_data.get('accuracy')}%")
+            if perf_data.get("flexibility") is not None:
+                context_parts.append(f"• Flexibility: {perf_data.get('flexibility')}%")
+        
+        context_parts.append(f"\nQUESTION FROM {name}: {user_message}")
+        context_parts.append(f"\nYour response MUST:")
+        context_parts.append(f"1. Address {name} by name")
+        context_parts.append(f"2. Reference their specific metric values")
+        context_parts.append(f"3. Provide personalized advice based on their data")
+        
+        return "\n".join(context_parts)
+    
     def _build_system_prompt(self) -> str:
         """Build the system prompt for Claude"""
         return """You are an expert musculoskeletal (MSK) wellness coach AI assistant. Your role is to help users understand their MSK assessment results and provide personalized recommendations for improvement.
+
+**CRITICAL: PERSONALIZATION REQUIREMENT**
+When user profile data is provided in the message (name, performance metrics), you MUST:
+1. Address the user by their name
+2. Reference their specific metric values (balance score, reaction time, etc.)
+3. Provide analysis based on THEIR actual data, not generic advice
+4. Make it clear you're analyzing THEIR specific results
 
 **Your Capabilities:**
 - Analyze and explain MSK assessment parameters (Balance, Reaction Time, ROM, Strength, etc.)
@@ -96,7 +364,7 @@ class LLMService:
 - Provide evidence-based health information
 
 **Guidelines:**
-1. Always base recommendations on the user's actual assessment data when available
+1. ALWAYS base recommendations on the user's actual assessment data when available
 2. Be encouraging and supportive while being honest about areas needing improvement
 3. Explain medical/technical terms in simple language
 4. Prioritize safety - mention contraindications and when to consult healthcare providers
@@ -129,7 +397,12 @@ class LLMService:
         
         # Format user message with context
         context_str = self._format_user_context(user_context)
-        full_message = f"{user_message}\n\n{context_str}" if context_str else user_message
+        
+        if context_str:
+            # Make it very explicit that this is the user's data
+            full_message = f"{context_str}\n\nBased on the profile data above, please answer: {user_message}\n\nRemember: Use the specific name and metrics provided above in your response."
+        else:
+            full_message = user_message
         
         messages.append({
             "role": "user",
@@ -143,6 +416,27 @@ class LLMService:
         if not user_context:
             return ""
         
+        # Check if we have real user profile data
+        if user_context.get("name"):
+            name = user_context.get("name")
+            perf_data = user_context.get("performance_data", {})
+            
+            context_parts = [f"[User Profile: {name}]"]
+            
+            if perf_data:
+                context_parts.append("Current Performance Metrics:")
+                if perf_data.get("balance") is not None:
+                    context_parts.append(f"- Balance Score: {perf_data.get('balance')}/100")
+                if perf_data.get("reaction_time") is not None:
+                    context_parts.append(f"- Reaction Time: {perf_data.get('reaction_time')}ms")
+                if perf_data.get("accuracy") is not None:
+                    context_parts.append(f"- Accuracy: {perf_data.get('accuracy')}%")
+                if perf_data.get("flexibility") is not None:
+                    context_parts.append(f"- Flexibility: {perf_data.get('flexibility')}%")
+            
+            return "\n".join(context_parts)
+        
+        # Legacy support for report data
         report = user_context.get("latest_report")
         if not report:
             return ""
@@ -263,7 +557,12 @@ Key Parameters:"""
     
     def _get_user_context(self) -> Dict[str, Any]:
         """Get user's MSK data"""
-        return {"latest_report": SAMPLE_REPORT}
+        # Lazy import to avoid circular dependency
+        try:
+            from app.api.endpoints.reports import SAMPLE_REPORT
+            return {"latest_report": SAMPLE_REPORT}
+        except ImportError:
+            return {}
     
     def _generate_mock_response(
         self,
@@ -275,17 +574,30 @@ Key Parameters:"""
         Uses keyword matching to provide relevant responses.
         """
         message_lower = user_message.lower()
-        report = user_context.get("latest_report", SAMPLE_REPORT)
+        
+        # Check if we have real user data
+        has_user_data = user_context.get("name") is not None
+        
+        # Use real user data or fall back to sample report
+        if has_user_data:
+            report = None  # We'll use user_context directly
+        else:
+            # Lazy import to avoid circular dependency
+            try:
+                from app.api.endpoints.reports import SAMPLE_REPORT
+                report = user_context.get("latest_report", SAMPLE_REPORT)
+            except ImportError:
+                report = user_context.get("latest_report", {})
         
         # Report analysis
         if any(kw in message_lower for kw in ["report", "assessment", "results", "score", "status"]):
-            return self._mock_report_analysis(report)
+            return self._mock_report_analysis(report, user_context)
         
         # Balance questions
         if "balance" in message_lower:
             if any(kw in message_lower for kw in ["improve", "increase", "better", "exercise"]):
-                return self._mock_balance_exercises()
-            return self._mock_balance_analysis(report)
+                return self._mock_balance_exercises(user_context)
+            return self._mock_balance_analysis(report, user_context)
         
         # ROM questions
         if any(kw in message_lower for kw in ["rom", "range of motion", "flexibility", "stretch"]):
@@ -312,8 +624,48 @@ Key Parameters:"""
         # Default greeting/help
         return self._mock_greeting()
     
-    def _mock_report_analysis(self, report: Dict) -> Dict[str, Any]:
+    def _mock_report_analysis(self, report: Dict, user_context: Dict) -> Dict[str, Any]:
         """Generate report analysis response"""
+        # Use real user data if available
+        if user_context.get("name"):
+            perf_data = user_context.get("performance_data", {})
+            balance = perf_data.get("balance", 0)
+            reaction = perf_data.get("reaction_time", 0)
+            flexibility = perf_data.get("flexibility", 0)
+            accuracy = perf_data.get("accuracy", 0)
+            
+            name = user_context.get("name", "there")
+            
+            return {
+                "message": f"""Hi **{name}**! 👋 Let me analyze your profile data:
+
+📊 **Your Current Metrics:**
+- **Balance Score**: {balance}/100 {'(Needs work! 🎯)' if balance < 50 else '(Good progress! 👍)' if balance < 75 else '(Excellent! 🌟)'}
+- **Reaction Time**: {reaction}ms {'(Could be faster)' if reaction > 400 else '(Good!)' if reaction > 300 else '(Excellent!)'}
+- **Flexibility**: {flexibility}% {'(Needs improvement)' if flexibility < 60 else '(Good!)' if flexibility < 80 else '(Excellent!)'}
+- **Accuracy**: {accuracy}% {'(Keep practicing)' if accuracy < 70 else '(Good!)' if accuracy < 90 else '(Outstanding!)'}
+
+**My Assessment:**
+{f"Your balance score of {balance}/100 is your main focus area. " if balance < 60 else ""}
+{f"Your reaction time of {reaction}ms shows room for improvement. " if reaction > 350 else ""}
+{f"Your flexibility at {flexibility}% could benefit from regular stretching. " if flexibility < 70 else ""}
+
+**My Recommendations:**
+1. {'Focus on balance exercises daily - this is your priority!' if balance < 50 else 'Continue your balance training to maintain progress.'}
+2. {'Add flexibility/stretching routines to your daily practice.' if flexibility < 70 else 'Keep up the good work with flexibility!'}
+3. Consider a structured program to track your improvements over time.
+
+Would you like specific exercises for your focus areas?""",
+                "function_calls": [],
+                "citations": [],
+                "suggested_questions": [
+                    "What exercises improve balance?",
+                    "How can I increase flexibility?",
+                    "Recommend a program for me"
+                ]
+            }
+        
+        # Fall back to sample report
         return {
             "message": f"""Based on your recent assessment from **{report.get('assessment_date', 'January 15, 2026')}**:
 
@@ -344,8 +696,43 @@ Would you like me to suggest specific exercises for balance or ROM?""",
             ]
         }
     
-    def _mock_balance_analysis(self, report: Dict) -> Dict[str, Any]:
+    def _mock_balance_analysis(self, report: Dict, user_context: Dict) -> Dict[str, Any]:
         """Generate balance-specific analysis"""
+        # Use real user data if available
+        if user_context.get("name"):
+            perf_data = user_context.get("performance_data", {})
+            balance = perf_data.get("balance", 0)
+            name = user_context.get("name", "there")
+            
+            return {
+                "message": f"""Hi **{name}**! Let me analyze your **balance** specifically:
+
+📊 **Your Balance Score: {balance}/100**
+
+**What This Means:**
+{f"Your balance score of {balance}/100 indicates significant room for improvement. " if balance < 50 else f"Your balance score of {balance}/100 shows you're making progress! " if balance < 75 else f"Your balance score of {balance}/100 is excellent! "}
+
+Good balance is essential for:
+- Preventing falls and injuries
+- Maintaining stability during daily activities
+- Supporting overall mobility and independence
+
+**Why This Matters:**
+{f"At {balance}/100, you may experience difficulty with activities requiring stability like climbing stairs, reaching for objects, or walking on uneven surfaces." if balance < 50 else f"At {balance}/100, you have decent balance but there's still room to improve for better stability and fall prevention." if balance < 75 else f"At {balance}/100, you have strong balance! Keep maintaining it with regular practice."}
+
+The good news? Balance is highly trainable with consistent practice! 💪
+
+Would you like me to recommend specific balance exercises tailored to your level?""",
+                "function_calls": [],
+                "citations": [],
+                "suggested_questions": [
+                    "Show me balance exercises",
+                    "How long to improve balance?",
+                    "What equipment do I need?"
+                ]
+            }
+        
+        # Fall back to sample data
         return {
             "message": """Let me break down your **balance scores**:
 
@@ -372,9 +759,13 @@ Would you like me to recommend exercises to improve your balance?""",
             ]
         }
     
-    def _mock_balance_exercises(self) -> Dict[str, Any]:
+    def _mock_balance_exercises(self, user_context: Dict) -> Dict[str, Any]:
         """Generate balance exercise recommendations"""
         exercises = self.knowledge_base.search_exercises(target_parameter="balance", limit=3)
+        
+        # Personalize based on user data
+        name = user_context.get("name", "")
+        name_prefix = f"Great question, **{name}**! " if name else "Great question! "
         
         exercise_text = ""
         for i, ex in enumerate(exercises, 1):
@@ -387,7 +778,7 @@ Would you like me to recommend exercises to improve your balance?""",
 """
         
         return {
-            "message": f"""Great question! Here are my top recommended exercises to improve your balance:
+            "message": f"""{name_prefix}Here are my top recommended exercises to improve your balance:
 {exercise_text}
 **Pro Tips:**
 - Start with the Single-Leg Stand - it's the foundation
@@ -658,6 +1049,49 @@ What would you like to explore first?""",
                 "Which care program should I follow?"
             ]
         }
+    
+    def _generate_suggestions(self, user_message: str) -> List[str]:
+        """Generate contextual follow-up suggestions based on user message"""
+        message_lower = user_message.lower()
+        
+        # Balance-related suggestions
+        if "balance" in message_lower:
+            return [
+                "How can I improve my balance?",
+                "Show me balance exercises",
+                "What care programs focus on balance?"
+            ]
+        
+        # ROM-related suggestions
+        if any(kw in message_lower for kw in ["rom", "flexibility", "stretch"]):
+            return [
+                "What exercises improve ROM?",
+                "How long to see ROM improvements?",
+                "Recommend products for flexibility"
+            ]
+        
+        # Exercise-related suggestions
+        if "exercise" in message_lower:
+            return [
+                "Create a weekly routine for me",
+                "How do I track my progress?",
+                "What equipment do I need?"
+            ]
+        
+        # Program-related suggestions
+        if any(kw in message_lower for kw in ["program", "care", "plan"]):
+            return [
+                "Which program is best for me?",
+                "How do I enroll?",
+                "Show me program details"
+            ]
+        
+        # Default suggestions
+        return [
+            "Explain my assessment results",
+            "What should I focus on first?",
+            "Recommend a care program"
+        ]
     
     def _extract_suggested_questions(self, message: str) -> List[str]:
         """Extract suggested follow-up questions from response"""

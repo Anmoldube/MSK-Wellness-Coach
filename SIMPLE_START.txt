@@ -1,0 +1,39 @@
+============================================================
+   SIMPLE STEPS TO FIX AND START
+============================================================
+
+STEP 1: Install missing dependencies
+------------------------------------------------------------
+cd backend
+pip install structlog sqlalchemy asyncpg alembic chromadb slowapi python-multipart Pillow aiofiles python-json-logger
+
+(This takes 2-3 minutes, wait for it to finish)
+
+
+STEP 2: Start backend
+------------------------------------------------------------
+uvicorn app.main:app --reload --port 8000
+
+
+STEP 3: Open frontend
+------------------------------------------------------------
+Open browser: http://localhost:5173
+
+
+STEP 4: Test profile creation
+------------------------------------------------------------
+Fill in the form and click "Create Profile"
+Should work now!
+
+
+============================================================
+WHAT WAS THE ISSUE?
+============================================================
+
+The 404 error was caused by:
+1. Missing Python packages (structlog, sqlalchemy, etc.)
+2. Router configuration (NOW FIXED)
+
+After installing dependencies and restarting, it will work!
+
+============================================================
