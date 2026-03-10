@@ -4,51 +4,54 @@ User Profile and Performance Data Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import structlog
+import uuid
+from datetime import datetime
 
-from app.db.session import get_db
-from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, PerformanceData
 
 logger = structlog.get_logger()
 
 router = APIRouter()
 
+# In-memory storage for serverless environments (session-based)
+# Note: This will reset on each cold start - for production, use a real database
+_users_cache: Dict[str, Dict[str, Any]] = {}
+
 
 @router.post("/profile", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user_profile(
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def create_user_profile(user_data: UserCreate):
     """
     Create a new user profile with game/sport performance data
     
     No authentication required - users just provide their name and performance metrics
+    Uses in-memory storage for serverless compatibility
     """
     try:
-        # Create new user
-        new_user = User(
-            name=user_data.name,
-            performance_data=user_data.performance_data.dict() if user_data.performance_data else {}
-        )
+        # Generate unique ID
+        user_id = str(uuid.uuid4())
+        created_at = datetime.utcnow()
         
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
+        # Store in memory
+        _users_cache[user_id] = {
+            "id": user_id,
+            "name": user_data.name,
+            "performance_data": user_data.performance_data.dict() if user_data.performance_data else {},
+            "created_at": created_at
+        }
         
-        logger.info("user_profile_created", user_id=new_user.id, name=new_user.name)
+        logger.info("user_profile_created", user_id=user_id, name=user_data.name)
         
         return UserResponse(
-            id=new_user.id,
-            name=new_user.name,
-            performance_data=new_user.performance_data,
-            created_at=new_user.created_at
+            id=user_id,
+            name=user_data.name,
+            performance_data=_users_cache[user_id]["performance_data"],
+            created_at=created_at
         )
         
     except Exception as e:
         logger.error("error_creating_user_profile", error=str(e))
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create user profile"
@@ -56,14 +59,10 @@ async def create_user_profile(
 
 
 @router.get("/profile/{user_id}", response_model=UserResponse)
-async def get_user_profile(
-    user_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_user_profile(user_id: str):
     """Get user profile by ID"""
     try:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+        user = _users_cache.get(user_id)
         
         if not user:
             raise HTTPException(
@@ -72,10 +71,10 @@ async def get_user_profile(
             )
         
         return UserResponse(
-            id=user.id,
-            name=user.name,
-            performance_data=user.performance_data,
-            created_at=user.created_at
+            id=user["id"],
+            name=user["name"],
+            performance_data=user["performance_data"],
+            created_at=user["created_at"]
         )
         
     except HTTPException:
@@ -89,15 +88,10 @@ async def get_user_profile(
 
 
 @router.put("/profile/{user_id}", response_model=UserResponse)
-async def update_user_profile(
-    user_id: str,
-    user_data: UserUpdate,
-    db: AsyncSession = Depends(get_db)
-):
+async def update_user_profile(user_id: str, user_data: UserUpdate):
     """Update user profile and performance data"""
     try:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+        user = _users_cache.get(user_id)
         
         if not user:
             raise HTTPException(
@@ -107,27 +101,23 @@ async def update_user_profile(
         
         # Update fields
         if user_data.name:
-            user.name = user_data.name
+            user["name"] = user_data.name
         if user_data.performance_data:
-            user.performance_data = user_data.performance_data.dict()
-        
-        await db.commit()
-        await db.refresh(user)
+            user["performance_data"] = user_data.performance_data.dict()
         
         logger.info("user_profile_updated", user_id=user_id)
         
         return UserResponse(
-            id=user.id,
-            name=user.name,
-            performance_data=user.performance_data,
-            created_at=user.created_at
+            id=user["id"],
+            name=user["name"],
+            performance_data=user["performance_data"],
+            created_at=user["created_at"]
         )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error("error_updating_user_profile", user_id=user_id, error=str(e))
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user profile"
@@ -135,16 +125,12 @@ async def update_user_profile(
 
 
 @router.get("/profile/{user_id}/performance-summary")
-async def get_performance_summary(
-    user_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_performance_summary(user_id: str):
     """
     Get a summary of user's performance metrics
     """
     try:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+        user = _users_cache.get(user_id)
         
         if not user:
             raise HTTPException(
@@ -152,12 +138,12 @@ async def get_performance_summary(
                 detail="User not found"
             )
         
-        perf_data = user.performance_data
+        perf_data = user["performance_data"]
         
         # Generate summary
         summary = {
             "user_id": user_id,
-            "name": user.name,
+            "name": user["name"],
             "total_metrics": len(perf_data),
             "metrics": perf_data,
             "strengths": _identify_strengths(perf_data),

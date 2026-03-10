@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
     
     # CORS - Dynamic for Vercel deployment
-    @property
-    def ALLOWED_ORIGINS(self) -> list:
+    def get_allowed_origins(self) -> list:
+        """Get CORS allowed origins dynamically"""
         origins = [
             "http://localhost:5173", 
             "http://localhost:3000", 
@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields from .env file
 
 
 settings = Settings()

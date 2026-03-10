@@ -17,32 +17,32 @@ from app.schemas.chat import (
     MessageRole,
 )
 from app.services.llm_service import LLMService
-from app.db.session import get_db
-from app.models.user import User
-
 router = APIRouter(prefix="/chat")
 
 # In-memory storage for demo (replace with database in production)
 conversations_db: dict = {}
 llm_service = LLMService()
 
+# Import the user cache from profile endpoint
+from app.api.endpoints.profile import _users_cache
+
 
 @router.post("/message", response_model=ChatResponse)
-async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/send", response_model=ChatResponse)  # Add alias for frontend compatibility
+async def send_message(request: ChatRequest):
     """
     Send a message to the chatbot and get a response
     """
-    # Fetch user profile if user_id provided
+    # Fetch user profile if user_id provided (from in-memory cache)
     user_context = None
     if request.user_id:
         try:
-            result = await db.execute(select(User).where(User.id == request.user_id))
-            user = result.scalar_one_or_none()
+            user = _users_cache.get(request.user_id)
             if user:
                 user_context = {
-                    "user_id": user.id,
-                    "name": user.name,
-                    "performance_data": user.performance_data or {}
+                    "user_id": user["id"],
+                    "name": user["name"],
+                    "performance_data": user["performance_data"] or {}
                 }
         except Exception as e:
             print(f"Error fetching user profile: {e}")

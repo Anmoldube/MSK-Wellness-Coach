@@ -39,9 +39,11 @@ async def lifespan(app: FastAPI):
     try:
         vector_store = get_vector_store()
         exercises = get_all_exercises()
-        if exercises and vector_store.collection.count() == 0:
+        if exercises and vector_store.collection and vector_store.collection.count() == 0:
             vector_store.index_exercises(exercises)
             logger.info("vector_store_initialized", exercises_indexed=len(exercises))
+        elif not vector_store.collection:
+            logger.info("vector_store_disabled", reason="ChromaDB not available")
     except Exception as e:
         logger.warning("vector_store_initialization_failed", error=str(e))
         logger.info("continuing_without_vector_store")
@@ -65,7 +67,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
