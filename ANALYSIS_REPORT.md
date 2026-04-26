@@ -1,4 +1,4 @@
-# MSK Wellness Coach - AI Chatbot & Report Analyzer Analysis
+# RAG BASED MSK Wellness Coach - AI Chatbot & Report Analyzer Analysis
 
 ## 🎯 Executive Summary
 
