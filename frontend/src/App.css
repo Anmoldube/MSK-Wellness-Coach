@@ -1,169 +1,212 @@
-/* App Layout Styles */
+/* ═══════════════════════════════════════════════════════════════════
+   MSK Wellness Coach — Premium Dark Theme
+   ═══════════════════════════════════════════════════════════════════ */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Root ────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0a0c14;
+    --bg-secondary: #0f1120;
+    --bg-surface: rgba(16, 20, 38, 0.8);
+    --bg-glass: rgba(16, 20, 38, 0.55);
+    --text-primary: #e4ecf8;
+    --text-secondary: rgba(228, 236, 248, 0.6);
+    --text-muted: rgba(228, 236, 248, 0.35);
+    --accent-blue: #3b82f6;
+    --accent-cyan: #22d3ee;
+    --accent-green: #22c55e;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(59, 130, 246, 0.25);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --shadow-glow: 0 4px 30px rgba(59, 130, 246, 0.08);
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── App Shell ───────────────────────────────────────────────────── */
 .app {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    width: 100%;
+    height: 100vh;
+    background: var(--bg-primary);
+    background-image:
+        radial-gradient(ellipse 80% 60% at 50% -20%, rgba(59, 130, 246, 0.08) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(34, 197, 94, 0.05) 0%, transparent 50%);
 }
 
-/* Header */
+/* ── Header ──────────────────────────────────────────────────────── */
 .app-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-md) var(--spacing-lg);
-    background: var(--gradient-card);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border-color);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    padding: 0 20px;
+    height: 56px;
+    background: rgba(10, 12, 20, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 30;
 }
 
 .menu-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    background: transparent;
-    border-radius: var(--radius-lg);
+    display: none;
+    border: none;
+    background: none;
     color: var(--text-secondary);
-    transition: all var(--transition-fast);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: background 0.2s;
 }
 
 .menu-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .app-logo {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
+    gap: 10px;
 }
 
 .logo-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: var(--gradient-card);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(34, 197, 94, 0.10));
+    border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
 .logo-text h1 {
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--primary-400), var(--secondary-400));
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #94c4ff, #4ade80);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    line-height: 1.2;
 }
 
 .logo-subtitle {
-    font-size: var(--font-size-xs);
+    font-size: 0.7rem;
     color: var(--text-muted);
+    font-weight: 400;
 }
 
-.header-actions {
-    display: flex;
-    gap: var(--spacing-sm);
-}
-
-.icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    background: transparent;
-    border-radius: var(--radius-lg);
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
-}
-
-.icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-}
-
-/* Header Navigation */
+/* ── Nav Tabs ────────────────────────────────────────────────────── */
 .header-nav {
-    display: none;
-    gap: var(--spacing-xs);
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 12px;
 }
 
 .nav-tab {
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: transparent;
-    border-radius: var(--radius-full);
-    color: var(--text-secondary);
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.78rem;
     font-weight: 500;
-    font-size: var(--font-size-sm);
-    transition: all var(--transition-fast);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .nav-tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
 }
 
 .nav-tab.active {
-    background: var(--gradient-primary);
-    color: white;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(34, 197, 94, 0.08));
+    color: #94c4ff;
+    font-weight: 600;
 }
 
-@media (min-width: 768px) {
-    .header-nav {
-        display: flex;
-    }
+/* ── Header Actions ──────────────────────────────────────────────── */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-/* Coming Soon */
+.icon-btn {
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+}
+
+/* ── Main Content ────────────────────────────────────────────────── */
+.app-main {
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Profile Form, Coming Soon, etc. ─────────────────────────────── */
 .coming-soon {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
+    color: var(--text-secondary);
+    gap: 10px;
+    padding: 40px;
     text-align: center;
-    color: var(--text-muted);
-    padding: var(--spacing-2xl);
 }
 
 .coming-soon h2 {
-    margin-bottom: var(--spacing-md);
+    font-size: 1.4rem;
+    color: var(--text-primary);
 }
 
-/* Body Layout */
-.app-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-
-.app-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-/* Responsive */
+/* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
+    .menu-btn {
+        display: flex;
+    }
+
+    .header-nav {
+        display: none;
+    }
+
     .app-header {
-        padding: var(--spacing-sm) var(--spacing-md);
+        padding: 0 12px;
     }
 
     .logo-text h1 {
-        font-size: var(--font-size-base);
-    }
-
-    .logo-subtitle {
-        display: none;
+        font-size: 0.9rem;
     }
 }

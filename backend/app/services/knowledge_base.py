@@ -1,5 +1,7 @@
 """
-Knowledge Base Service - Stores exercises, care programs, and products
+Knowledge Base Service - Stores exercises, care programs, and products.
+Integrates with ChromaDB for true semantic (RAG) search.
+In-memory data is the source of truth; ChromaDB enables vector similarity search.
 """
 from typing import List, Optional, Dict, Any
 import json
@@ -17,15 +19,278 @@ from app.schemas.recommendation import (
 
 class KnowledgeBaseService:
     """
-    In-memory knowledge base for MSK wellness data.
-    In production, this would use ChromaDB for vector search.
+    Knowledge base for MSK wellness data.
+    On init, auto-indexes all data into ChromaDB for semantic search.
+    Falls back to keyword filtering if ChromaDB is unavailable.
     """
-    
+
     def __init__(self):
         self.care_programs = self._load_care_programs()
         self.exercises = self._load_exercises()
         self.products = self._load_products()
-    
+
+        # Initialize vector store and index data (True RAG setup)
+        self._init_vector_store()
+
+    def _init_vector_store(self):
+        """Initialize ChromaDB and index all documents if collection is empty."""
+        try:
+            from app.services.vector_store import get_vector_store
+            self.vector_store = get_vector_store()
+
+            if self.vector_store.is_available:
+                count = self.vector_store.get_count()
+                if count == 0:
+                    print("🔄 ChromaDB is empty — indexing MSK knowledge base...")
+                    self._index_all_documents()
+                    print(f"✅ Indexed {self.vector_store.get_count()} documents into ChromaDB")
+                else:
+                    print(f"✅ ChromaDB ready with {count} indexed documents")
+            else:
+                print("⚠️  ChromaDB not available — using keyword search fallback")
+        except Exception as e:
+            print(f"⚠️  Vector store init failed: {e} — using keyword search fallback")
+            self.vector_store = None
+
+    def _index_all_documents(self):
+        """Index all exercises, care programs, and products into ChromaDB."""
+        # --- Index exercises ---
+        exercise_docs = []
+        for ex in self.exercises:
+            text = (
+                f"{ex['name']}. "
+                f"Category: {ex['category']}. "
+                f"Instructions: {' '.join(ex.get('instructions', []))}. "
+                f"Target: {', '.join(ex.get('target_parameters', []))}. "
+                f"Difficulty: {ex.get('difficulty', '')}."
+            )
+            exercise_docs.append({
+                "id": ex["exercise_id"],
+                "text": text,
+                "metadata": {
+                    "name": ex["name"],
+                    "category": ex["category"],
+                    "difficulty": ex.get("difficulty", "easy"),
+                    "sets_reps": ex.get("sets_reps", ""),
+                    "frequency": ex.get("frequency", ""),
+                    "expected_timeline": ex.get("expected_timeline", ""),
+                }
+            })
+        self.vector_store.index_documents(exercise_docs, doc_type="exercise")
+
+        # --- Index care programs ---
+        program_docs = []
+        for p in self.care_programs:
+            text = (
+                f"{p['name']}. "
+                f"Provider: {p.get('provider', '')}. "
+                f"Focus areas: {', '.join(p.get('focus_areas', []))}. "
+                f"Description: {p.get('description', '')}. "
+                f"Intensity: {p.get('intensity', '')}. "
+                f"Duration: {p.get('duration_weeks', '')} weeks."
+            )
+            program_docs.append({
+                "id": p["program_id"],
+                "text": text,
+                "metadata": {
+                    "name": p["name"],
+                    "provider": p.get("provider", ""),
+                    "intensity": p.get("intensity", "intermediate"),
+                    "duration_weeks": str(p.get("duration_weeks", "")),
+                    "cost": str(p.get("cost", "")),
+                    "focus_areas": json.dumps(p.get("focus_areas", [])),
+                }
+            })
+        self.vector_store.index_documents(program_docs, doc_type="care_program")
+
+        # --- Index products ---
+        product_docs = []
+        for prod in self.products:
+            text = (
+                f"{prod['name']}. "
+                f"Type: {prod.get('type', '')}. "
+                f"Category: {prod.get('category', '')}. "
+                f"Description: {prod.get('description', '')}. "
+                f"Use cases: {', '.join(prod.get('use_cases', []))}."
+            )
+            product_docs.append({
+                "id": prod["product_id"],
+                "text": text,
+                "metadata": {
+                    "name": prod["name"],
+                    "type": prod["type"],
+                    "category": prod["category"],
+                    "price": str(prod.get("price", "")),
+                    "evidence_level": prod.get("evidence_level", ""),
+                    "use_cases": json.dumps(prod.get("use_cases", [])),
+                }
+            })
+        self.vector_store.index_documents(product_docs, doc_type="product")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Public Search Methods (RAG-powered with keyword fallback)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def search_care_programs(
+        self,
+        focus_areas: Optional[List[str]] = None,
+        intensity: Optional[Intensity] = None,
+        limit: int = 5,
+        query: Optional[str] = None,
+    ) -> List[CareProgram]:
+        """Search for matching care programs using semantic search (RAG) or keyword fallback."""
+
+        # Build the natural-language query for semantic search
+        if query is None:
+            parts = []
+            if focus_areas:
+                parts.append(f"care program for {', '.join(focus_areas)}")
+            if intensity:
+                parts.append(f"intensity: {intensity.value if hasattr(intensity, 'value') else intensity}")
+            query = " ".join(parts) if parts else "wellness care program"
+
+        # Try semantic search first
+        if self.vector_store and self.vector_store.is_available:
+            semantic_results = self.vector_store.search_documents(
+                query=query,
+                doc_type="care_program",
+                n_results=limit
+            )
+            if semantic_results:
+                matched_ids = {r["id"].replace("care_program_", "") for r in semantic_results}
+                results = [p for p in self.care_programs if p["program_id"] in matched_ids]
+                # Re-apply intensity filter (semantic search doesn't hard-filter)
+                if intensity:
+                    results = [p for p in results if p["intensity"] == (intensity.value if hasattr(intensity, "value") else intensity)]
+                return [
+                    CareProgram(**{**p, "intensity": Intensity(p["intensity"])})
+                    for p in results[:limit]
+                ]
+
+        # Keyword fallback
+        results = self.care_programs.copy()
+        if focus_areas:
+            results = [p for p in results if any(area in p["focus_areas"] for area in focus_areas)]
+        if intensity:
+            results = [p for p in results if p["intensity"] == (intensity.value if hasattr(intensity, "value") else intensity)]
+        return [
+            CareProgram(**{**p, "intensity": Intensity(p["intensity"])})
+            for p in results[:limit]
+        ]
+
+    def search_exercises(
+        self,
+        target_parameter: Optional[str] = None,
+        difficulty: Optional[Difficulty] = None,
+        limit: int = 10,
+        query: Optional[str] = None,
+    ) -> List[Exercise]:
+        """Search for exercises using semantic search (RAG) or keyword fallback."""
+
+        # Build natural-language query for semantic search
+        if query is None:
+            parts = []
+            if target_parameter:
+                parts.append(f"exercises for {target_parameter}")
+            if difficulty:
+                diff = difficulty.value if hasattr(difficulty, "value") else difficulty
+                parts.append(f"difficulty: {diff}")
+            query = " ".join(parts) if parts else "exercise workout"
+
+        # Try semantic search first
+        if self.vector_store and self.vector_store.is_available:
+            semantic_results = self.vector_store.search_documents(
+                query=query,
+                doc_type="exercise",
+                n_results=limit
+            )
+            if semantic_results:
+                matched_ids = {r["id"].replace("exercise_", "") for r in semantic_results}
+                results = [e for e in self.exercises if e["exercise_id"] in matched_ids]
+                # Re-apply difficulty filter
+                if difficulty:
+                    diff_val = difficulty.value if hasattr(difficulty, "value") else difficulty
+                    results = [e for e in results if e["difficulty"] == diff_val]
+                return [
+                    Exercise(**{**e, "difficulty": Difficulty(e["difficulty"])})
+                    for e in results[:limit]
+                ]
+
+        # Keyword fallback
+        results = self.exercises.copy()
+        if target_parameter:
+            results = [
+                e for e in results
+                if target_parameter in e["category"] or
+                   any(target_parameter in p for p in e["target_parameters"])
+            ]
+        if difficulty:
+            diff_val = difficulty.value if hasattr(difficulty, "value") else difficulty
+            results = [e for e in results if e["difficulty"] == diff_val]
+        return [
+            Exercise(**{**e, "difficulty": Difficulty(e["difficulty"])})
+            for e in results[:limit]
+        ]
+
+    def search_products(
+        self,
+        condition: Optional[str] = None,
+        product_type: Optional[ProductType] = None,
+        limit: int = 5,
+        query: Optional[str] = None,
+    ) -> List[Product]:
+        """Search for products using semantic search (RAG) or keyword fallback."""
+
+        # Build natural-language query
+        if query is None:
+            parts = []
+            if condition:
+                parts.append(f"product for {condition}")
+            if product_type:
+                pt = product_type.value if hasattr(product_type, "value") else product_type
+                parts.append(f"type: {pt}")
+            query = " ".join(parts) if parts else "wellness product"
+
+        # Try semantic search first
+        if self.vector_store and self.vector_store.is_available:
+            semantic_results = self.vector_store.search_documents(
+                query=query,
+                doc_type="product",
+                n_results=limit
+            )
+            if semantic_results:
+                matched_ids = {r["id"].replace("product_", "") for r in semantic_results}
+                results = [p for p in self.products if p["product_id"] in matched_ids]
+                if product_type:
+                    pt_val = product_type.value if hasattr(product_type, "value") else product_type
+                    results = [p for p in results if p["type"] == pt_val]
+                return [
+                    Product(**{**p, "type": ProductType(p["type"])})
+                    for p in results[:limit]
+                ]
+
+        # Keyword fallback
+        results = self.products.copy()
+        if condition:
+            condition_lower = condition.lower()
+            results = [
+                p for p in results
+                if any(condition_lower in uc.lower() for uc in p["use_cases"]) or
+                   condition_lower in p["description"].lower() or
+                   condition_lower in p["category"].lower()
+            ]
+        if product_type:
+            pt_val = product_type.value if hasattr(product_type, "value") else product_type
+            results = [p for p in results if p["type"] == pt_val]
+        return [
+            Product(**{**p, "type": ProductType(p["type"])})
+            for p in results[:limit]
+        ]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Data Loaders
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _load_care_programs(self) -> List[Dict]:
         """Load care programs data"""
         return [
@@ -80,7 +345,7 @@ class KnowledgeBaseService:
                 "cost": 449.00,
             },
         ]
-    
+
     def _load_exercises(self) -> List[Dict]:
         """Load exercises data"""
         return [
@@ -273,7 +538,7 @@ class KnowledgeBaseService:
                 "expected_timeline": "3-4 weeks for improved leg strength"
             },
         ]
-    
+
     def _load_products(self) -> List[Dict]:
         """Load products data"""
         return [
@@ -348,82 +613,6 @@ class KnowledgeBaseService:
                 "evidence_level": "moderate"
             },
         ]
-    
-    def search_care_programs(
-        self,
-        focus_areas: Optional[List[str]] = None,
-        intensity: Optional[Intensity] = None,
-        limit: int = 5
-    ) -> List[CareProgram]:
-        """Search for matching care programs"""
-        results = self.care_programs.copy()
-        
-        if focus_areas:
-            results = [
-                p for p in results
-                if any(area in p["focus_areas"] for area in focus_areas)
-            ]
-        
-        if intensity:
-            results = [p for p in results if p["intensity"] == intensity.value]
-        
-        return [
-            CareProgram(
-                **{**p, "intensity": Intensity(p["intensity"])}
-            )
-            for p in results[:limit]
-        ]
-    
-    def search_exercises(
-        self,
-        target_parameter: Optional[str] = None,
-        difficulty: Optional[Difficulty] = None,
-        limit: int = 10
-    ) -> List[Exercise]:
-        """Search for matching exercises"""
-        results = self.exercises.copy()
-        
-        if target_parameter:
-            # Match category or specific parameter
-            results = [
-                e for e in results
-                if target_parameter in e["category"] or
-                   any(target_parameter in p for p in e["target_parameters"])
-            ]
-        
-        if difficulty:
-            results = [e for e in results if e["difficulty"] == difficulty.value]
-        
-        return [
-            Exercise(**{**e, "difficulty": Difficulty(e["difficulty"])})
-            for e in results[:limit]
-        ]
-    
-    def search_products(
-        self,
-        condition: Optional[str] = None,
-        product_type: Optional[ProductType] = None,
-        limit: int = 5
-    ) -> List[Product]:
-        """Search for matching products"""
-        results = self.products.copy()
-        
-        if condition:
-            condition_lower = condition.lower()
-            results = [
-                p for p in results
-                if any(condition_lower in uc.lower() for uc in p["use_cases"]) or
-                   condition_lower in p["description"].lower() or
-                   condition_lower in p["category"].lower()
-            ]
-        
-        if product_type:
-            results = [p for p in results if p["type"] == product_type.value]
-        
-        return [
-            Product(**{**p, "type": ProductType(p["type"])})
-            for p in results[:limit]
-        ]
 
 
 # Singleton instance
@@ -432,14 +621,10 @@ knowledge_base = KnowledgeBaseService()
 
 def get_all_exercises() -> List[Dict[str, Any]]:
     """
-    Get all exercises as a flat list for vector store indexing
-    
-    Returns:
-        List of all exercise dictionaries with required fields
+    Get all exercises as a flat list for external indexing.
     """
     exercises = knowledge_base.exercises
-    
-    # Transform exercises to include all necessary fields for vector store
+
     formatted_exercises = []
     for ex in exercises:
         formatted_exercises.append({
@@ -452,5 +637,5 @@ def get_all_exercises() -> List[Dict[str, Any]]:
             'benefits': ex.get('target_parameters', []),
             'target_areas': ex.get('target_parameters', [])
         })
-    
+
     return formatted_exercises

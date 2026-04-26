@@ -1,27 +1,57 @@
 """
 Vercel Serverless Entry Point
-This file wraps the FastAPI app for Vercel's serverless functions
+Wraps the FastAPI app for Vercel serverless functions with proper DB initialization.
 """
 import sys
+import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 # Add backend directory to Python path
 backend_dir = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
-# Import FastAPI without triggering lifespan events
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import structlog
 
-# Create a minimal app without complex initialization for serverless
+logger = structlog.get_logger()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Startup: create DB tables if they don't exist.
+    This is safe to run on every cold start — create_all is idempotent.
+    """
+    try:
+        from app.db.init_db import init_db
+        await init_db()
+        logger.info("serverless_db_initialized")
+    except Exception as e:
+        # Log but don't crash — app can still serve static files / health checks
+        logger.error("serverless_db_init_failed", error=str(e))
+
+    # Skip ChromaDB indexing in serverless — no persistent /tmp between invocations.
+    # Knowledge base falls back to keyword search automatically.
+
+    yield
+    # No explicit teardown needed for serverless
+
+
+# Create app with lifespan
+from app.core.config import settings
+
 app = FastAPI(
     title="MSK Wellness AI Chatbot",
     description="AI-powered chatbot for musculoskeletal wellness analysis and recommendations",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS
-from app.core.config import settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_allowed_origins(),
@@ -30,7 +60,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include API routers
 from app.api.endpoints import chat, reports, users, recommendations, profile, upload, progress
 app.include_router(chat.router, prefix=settings.API_V1_PREFIX, tags=["Chat"])
 app.include_router(reports.router, prefix=settings.API_V1_PREFIX, tags=["Reports"])
@@ -39,6 +69,7 @@ app.include_router(recommendations.router, prefix=settings.API_V1_PREFIX, tags=[
 app.include_router(profile.router, prefix=settings.API_V1_PREFIX, tags=["Profile"])
 app.include_router(upload.router, prefix=settings.API_V1_PREFIX, tags=["Upload"])
 app.include_router(progress.router, prefix=settings.API_V1_PREFIX, tags=["Progress"])
+
 
 @app.get("/api")
 async def root():
@@ -49,41 +80,48 @@ async def root():
         "version": "1.0.0"
     }
 
+
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "environment": "serverless"}
+    """Health check — also reports DB connectivity"""
+    import sqlalchemy
+    db_status = "unknown"
+    try:
+        from app.db.session import engine
+        async with engine.connect() as conn:
+            await conn.execute(sqlalchemy.text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
 
-# Mount static files from frontend dist
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pathlib import Path
-import os
+    return {
+        "status": "healthy",
+        "environment": "serverless",
+        "database": db_status,
+    }
 
-# Get the frontend dist directory
+
+# Serve frontend static assets
 frontend_dir = Path(__file__).parent.parent / "frontend" / "dist"
 
-# Mount assets directory for JS, CSS, and other static files
 if (frontend_dir / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
+
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
     """Serve frontend static files or index.html for SPA routing"""
-    # If it's an API route, let FastAPI handle it normally
     if full_path.startswith("api"):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Not Found")
-    
-    # Check if it's a static file request
+
     file_path = frontend_dir / full_path
     if file_path.is_file():
         return FileResponse(file_path)
-    
-    # Otherwise serve index.html for SPA routing
+
     index_file = frontend_dir / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    else:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Frontend not found")
+
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Frontend not found")

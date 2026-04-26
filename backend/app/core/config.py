@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
     
-    # Database (using SQLite for development - no PostgreSQL needed!)
-    DATABASE_URL: str = "sqlite+aiosqlite:///./msk_chatbot.db"
+    # Database Configuration (PostgreSQL)
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/msk_chatbot"
     
     # AI API Configuration (choose one)
     AI_PROVIDER: str = "anthropic"  # Options: "anthropic", "openai", "gemini", "poe", "groq"
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     
     # ChromaDB
     CHROMA_PERSIST_DIR: str = "./data/chromadb"
-    CHROMA_COLLECTION_NAME: str = "exercise_recommendations"
+    CHROMA_COLLECTION_NAME: str = "msk_knowledge_base"
     
     # File Upload
     UPLOAD_DIR: str = "./data/uploads"

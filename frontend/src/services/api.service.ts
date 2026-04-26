@@ -21,6 +21,7 @@ interface ChatResponse {
     }>;
     citations?: string[];
     suggested_questions?: string[];
+    rag_sources?: Array<{ filename: string; page: number; doc_id: string }>;
 }
 
 interface AssessmentReport {
@@ -80,12 +81,31 @@ class ApiService {
         });
     }
 
-    async getConversations(limit: number = 10) {
+    async getConversations(userId?: string, limit: number = 20) {
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (userId) params.append('user_id', userId);
         return this.request<Array<{
             conversation_id: string;
+            title?: string;
             started_at: string;
             message_count: number;
-        }>>(`/chat/conversations?limit=${limit}`);
+            last_message_preview?: string;
+        }>>(`/chat/conversations?${params}`);
+    }
+
+    async getConversation(conversationId: string) {
+        return this.request<{
+            conversation_id: string;
+            user_id: string;
+            messages: Array<{ role: string; content: string; timestamp: string }>;
+            started_at: string;
+        }>(`/chat/conversations/${conversationId}`);
+    }
+
+    async deleteConversation(conversationId: string) {
+        return this.request<{ status: string }>(`/chat/conversations/${conversationId}`, {
+            method: 'DELETE',
+        });
     }
 
     // Reports endpoints
@@ -116,6 +136,42 @@ class ApiService {
     async getProducts(condition?: string) {
         const params = condition ? `?condition=${condition}` : '';
         return this.request(`/recommendations/products${params}`);
+    }
+
+    // Document endpoints (RAG)
+    async uploadDocument(userId: string, file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${this.baseUrl}/upload/document/${userId}`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+            throw new Error(error.detail || `HTTP error ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async getUserDocuments(userId: string) {
+        return this.request<Array<{
+            doc_id: string;
+            filename: string;
+            file_type: string;
+            page_count: number;
+            chunk_count: number;
+            status: string;
+            created_at: string;
+        }>>(`/upload/documents/${userId}`);
+    }
+
+    async deleteDocument(docId: string) {
+        return this.request<{ status: string; doc_id: string }>(`/upload/document/${docId}`, {
+            method: 'DELETE',
+        });
     }
 
     // Health check

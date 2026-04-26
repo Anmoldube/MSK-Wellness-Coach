@@ -91,10 +91,12 @@ class LLMService:
         user_message: str,
         conversation_history: List[Dict] = None,
         include_context: bool = True,
-        user_context: Dict = None
+        user_context: Dict = None,
+        rag_context: str = "",
     ) -> Dict[str, Any]:
         """
         Main chat method that orchestrates the conversation flow.
+        rag_context: optional string of relevant document chunks from ChromaDB.
         """
         print("\n" + "="*80)
         print(f"🔵 CHAT METHOD CALLED")
@@ -116,17 +118,17 @@ class LLMService:
         # If we have Groq client, use it (fastest!)
         if self.groq_client:
             print("✅ USING GROQ API")
-            return await self._call_groq(user_message, user_context, conversation_history)
+            return await self._call_groq(user_message, user_context, conversation_history, rag_context)
         
         # If we have Poe client, use it
         if self.poe_client:
             print("✅ USING POE API")
-            return await self._call_poe(user_message, user_context, conversation_history)
+            return await self._call_poe(user_message, user_context, conversation_history, rag_context)
         
         # If we have a real Claude client, use it
         if self.client:
             print("✅ USING CLAUDE API")
-            return await self._call_claude(user_message, user_context, conversation_history)
+            return await self._call_claude(user_message, user_context, conversation_history, rag_context)
         
         # Otherwise, use intelligent mock responses
         print("❌ USING MOCK RESPONSES - NO API AVAILABLE")
@@ -136,7 +138,8 @@ class LLMService:
         self,
         user_message: str,
         user_context: Dict,
-        conversation_history: List[Dict]
+        conversation_history: List[Dict],
+        rag_context: str = "",
     ) -> Dict[str, Any]:
         """Call Groq API (OpenAI-compatible format)"""
         print("\n🟢 _call_groq() STARTED")
@@ -150,9 +153,17 @@ class LLMService:
             context_str = self._format_user_context(user_context)
             
             if context_str:
-                full_message = f"{context_str}\n\nBased on the profile data above, please answer: {user_message}\n\nRemember: Use the specific name and metrics provided above in your response."
+                full_message = f"{context_str}\n\n"
             else:
-                full_message = user_message
+                full_message = ""
+
+            if rag_context:
+                full_message += f"{rag_context}\n\n"
+
+            full_message += f"Based on all context above, please answer: {user_message}" if (context_str or rag_context) else user_message
+
+            if context_str or rag_context:
+                full_message += "\n\nRemember: Use the specific name and metrics provided above in your response. If document context is provided, reference it."
             
             # Convert conversation history to Groq format
             messages = [{"role": "system", "content": system_prompt}]
@@ -208,7 +219,8 @@ class LLMService:
         self,
         user_message: str,
         user_context: Dict,
-        conversation_history: List[Dict]
+        conversation_history: List[Dict],
+        rag_context: str = "",
     ) -> Dict[str, Any]:
         """Call Claude API with tools"""
         
@@ -216,7 +228,7 @@ class LLMService:
         system_prompt = self._build_system_prompt()
         
         # Build messages
-        messages = self._build_messages(user_message, user_context, conversation_history)
+        messages = self._build_messages(user_message, user_context, conversation_history, rag_context)
         
         # Define tools
         tools = self._get_tools()
@@ -241,7 +253,8 @@ class LLMService:
         self,
         user_message: str,
         user_context: Dict,
-        conversation_history: List[Dict]
+        conversation_history: List[Dict],
+        rag_context: str = "",
     ) -> Dict[str, Any]:
         """Call Poe API"""
         print("\n🟢 _call_poe() STARTED")
@@ -253,6 +266,8 @@ class LLMService:
             
             # Build context-aware message
             context_message = self._build_context_message(user_message, user_context)
+            if rag_context:
+                context_message = f"{rag_context}\n\n{context_message}"
             print(f"   📝 Context message preview (first 500 chars):")
             print(f"   {context_message[:500]}")
             print(f"   User context keys: {list(user_context.keys()) if user_context else 'None'}")
@@ -382,7 +397,8 @@ When user profile data is provided in the message (name, performance metrics), y
         self,
         user_message: str,
         user_context: Dict,
-        conversation_history: List[Dict]
+        conversation_history: List[Dict],
+        rag_context: str = "",
     ) -> List[Dict]:
         """Build messages array for Claude API"""
         messages = []
@@ -399,10 +415,17 @@ When user profile data is provided in the message (name, performance metrics), y
         context_str = self._format_user_context(user_context)
         
         if context_str:
-            # Make it very explicit that this is the user's data
-            full_message = f"{context_str}\n\nBased on the profile data above, please answer: {user_message}\n\nRemember: Use the specific name and metrics provided above in your response."
+            full_message = f"{context_str}\n\n"
         else:
-            full_message = user_message
+            full_message = ""
+
+        if rag_context:
+            full_message += f"{rag_context}\n\n"
+
+        full_message += f"Based on all context above, please answer: {user_message}" if (context_str or rag_context) else user_message
+
+        if context_str or rag_context:
+            full_message += "\n\nRemember: Use the specific name and metrics provided above in your response. If document context is provided, reference it."
         
         messages.append({
             "role": "user",
@@ -596,7 +619,7 @@ Key Parameters:"""
         # Balance questions
         if "balance" in message_lower:
             if any(kw in message_lower for kw in ["improve", "increase", "better", "exercise"]):
-                return self._mock_balance_exercises(user_context)
+                return self._mock_balance_exercises(user_context, user_message=user_message)
             return self._mock_balance_analysis(report, user_context)
         
         # ROM questions
@@ -759,9 +782,15 @@ Would you like me to recommend exercises to improve your balance?""",
             ]
         }
     
-    def _mock_balance_exercises(self, user_context: Dict) -> Dict[str, Any]:
-        """Generate balance exercise recommendations"""
-        exercises = self.knowledge_base.search_exercises(target_parameter="balance", limit=3)
+    def _mock_balance_exercises(self, user_context: Dict, user_message: str = "") -> Dict[str, Any]:
+        """Generate balance exercise recommendations using RAG semantic search"""
+        # Use the user's actual message as the semantic query for ChromaDB
+        rag_query = user_message if user_message else "balance exercises to improve stability and prevent falls"
+        exercises = self.knowledge_base.search_exercises(
+            target_parameter="balance",
+            limit=3,
+            query=rag_query
+        )
         
         # Personalize based on user data
         name = user_context.get("name", "")

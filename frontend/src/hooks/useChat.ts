@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { apiService } from '../services/api.service';
-import { ChatMessage } from '../types/chat.types';
+import { ChatMessage, ConversationSummary } from '../types/chat.types';
 
 // Generate unique ID
 const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -11,11 +11,32 @@ export function useChat(userId: string) {
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+    const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+    const [conversationsLoading, setConversationsLoading] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial greeting
+    // Load conversations list
+    const loadConversations = useCallback(async () => {
+        if (!userId) return;
+        setConversationsLoading(true);
+        try {
+            const convos = await apiService.getConversations(userId, 30);
+            setConversations(convos);
+        } catch (err) {
+            console.error('Failed to load conversations:', err);
+        } finally {
+            setConversationsLoading(false);
+        }
+    }, [userId]);
+
+    // Load on mount and userId change
     useEffect(() => {
+        loadConversations();
+    }, [loadConversations]);
+
+    // Show welcome message
+    const showWelcome = useCallback(() => {
         const welcomeMessage: ChatMessage = {
             id: generateId(),
             role: 'assistant',
@@ -25,7 +46,7 @@ export function useChat(userId: string) {
 - 📊 Understanding your assessment results
 - 💪 Personalized exercise recommendations
 - 📋 Care program suggestions
-- 🛒 Product recommendations
+- 📄 Answering questions about your uploaded documents
 
 What would you like to explore today?`,
             timestamp: new Date(),
@@ -39,6 +60,11 @@ What would you like to explore today?`,
         setSuggestedQuestions(welcomeMessage.suggestedQuestions || []);
     }, []);
 
+    // Initial greeting
+    useEffect(() => {
+        showWelcome();
+    }, [showWelcome]);
+
     // Auto-scroll to bottom
     const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,6 +73,50 @@ What would you like to explore today?`,
     useEffect(() => {
         scrollToBottom();
     }, [messages, scrollToBottom]);
+
+    // Start a new conversation
+    const startNewChat = useCallback(() => {
+        setConversationId(null);
+        setError(null);
+        setSuggestedQuestions([]);
+        showWelcome();
+    }, [showWelcome]);
+
+    // Load a previous conversation
+    const loadConversation = useCallback(async (convId: string) => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const detail = await apiService.getConversation(convId);
+            setConversationId(detail.conversation_id);
+
+            const loadedMessages: ChatMessage[] = detail.messages.map((m, i) => ({
+                id: `loaded_${i}_${Date.now()}`,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                timestamp: new Date(m.timestamp),
+            }));
+            setMessages(loadedMessages);
+            setSuggestedQuestions([]);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load conversation');
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    // Delete a conversation
+    const deleteConversation = useCallback(async (convId: string) => {
+        try {
+            await apiService.deleteConversation(convId);
+            setConversations(prev => prev.filter(c => c.conversation_id !== convId));
+            if (convId === conversationId) {
+                startNewChat();
+            }
+        } catch (err) {
+            console.error('Failed to delete conversation:', err);
+        }
+    }, [conversationId, startNewChat]);
 
     // Send message
     const sendMessage = useCallback(async (content: string) => {
@@ -107,6 +177,9 @@ What would you like to explore today?`,
                 setSuggestedQuestions(response.suggested_questions);
             }
 
+            // Refresh conversations list
+            loadConversations();
+
         } catch (err) {
             // Remove loading message on error
             setMessages(prev => prev.filter(msg => msg.id !== loadingId));
@@ -125,7 +198,7 @@ What would you like to explore today?`,
         } finally {
             setIsLoading(false);
         }
-    }, [conversationId, isLoading]);
+    }, [conversationId, isLoading, userId, loadConversations]);
 
     // Clear conversation
     const clearConversation = useCallback(() => {
@@ -140,8 +213,15 @@ What would you like to explore today?`,
         isLoading,
         error,
         suggestedQuestions,
+        conversations,
+        conversationsLoading,
+        conversationId,
         sendMessage,
         clearConversation,
+        startNewChat,
+        loadConversation,
+        deleteConversation,
+        loadConversations,
         messagesEndRef,
     };
 }

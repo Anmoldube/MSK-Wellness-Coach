@@ -1,114 +1,105 @@
-/* Message Input Styles */
+/* ═══════════════════════════════════════════════════════════════════
+   Message Input — Premium Dark Theme
+   Matches MessageInput.tsx class names:
+     .message-input-form, .input-wrapper, .message-textarea,
+     .send-button, .loading-spinner, .input-hint
+   ═══════════════════════════════════════════════════════════════════ */
 
 .message-input-form {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 4px;
 }
 
 .input-wrapper {
     display: flex;
     align-items: flex-end;
-    gap: var(--spacing-sm);
-    background: var(--gradient-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-xl);
-    padding: var(--spacing-sm);
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(20, 25, 45, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.15);
 }
 
 .input-wrapper:focus-within {
-    border-color: var(--primary-500);
-    box-shadow: 0 0 0 3px rgba(46, 163, 255, 0.1);
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow: 0 2px 24px rgba(59, 130, 246, 0.10), 0 0 0 1px rgba(59, 130, 246, 0.1);
 }
 
 .message-textarea {
     flex: 1;
-    background: transparent;
     border: none;
-    color: var(--text-primary);
-    font-family: var(--font-family);
-    font-size: var(--font-size-base);
+    background: none;
+    color: #e4ecf8;
+    font-size: 0.88rem;
+    font-family: inherit;
     line-height: 1.5;
     resize: none;
-    padding: var(--spacing-sm) var(--spacing-md);
-    min-height: 44px;
-    max-height: 150px;
-    overflow-y: auto;
+    outline: none;
+    min-height: 22px;
+    max-height: 120px;
 }
 
 .message-textarea::placeholder {
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.25);
 }
 
-.message-textarea:focus {
-    outline: none;
-}
-
-.message-textarea:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Send Button */
 .send-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: var(--gradient-primary);
-    border-radius: var(--radius-lg);
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
     color: white;
-    transition: all var(--transition-fast);
+    cursor: pointer;
+    transition: all 0.25s ease;
     flex-shrink: 0;
 }
 
 .send-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
     transform: scale(1.05);
-    box-shadow: var(--shadow-glow);
-}
-
-.send-button:active:not(:disabled) {
-    transform: scale(0.95);
+    box-shadow: 0 3px 16px rgba(37, 99, 235, 0.3);
 }
 
 .send-button:disabled {
-    opacity: 0.5;
+    opacity: 0.35;
     cursor: not-allowed;
+    transform: none;
 }
 
-/* Loading Spinner */
+.send-button svg {
+    transition: transform 0.2s;
+}
+
+.send-button:hover:not(:disabled) svg {
+    transform: translateX(1px);
+}
+
+/* Loading spinner */
 .loading-spinner {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
+    border-top-color: #ffffff;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: inputSpin 0.7s linear infinite;
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+@keyframes inputSpin {
+    to { transform: rotate(360deg); }
 }
 
 /* Hint */
 .input-hint {
-    font-size: var(--font-size-xs);
-    color: var(--text-muted);
-    text-align: center;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .input-hint {
-        display: none;
-    }
-
-    .send-button {
-        width: 40px;
-        height: 40px;
-    }
+    font-size: 0.66rem;
+    color: rgba(255, 255, 255, 0.15);
+    padding: 0 4px;
 }

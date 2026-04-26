@@ -1,5 +1,5 @@
 """
-Vector store service using ChromaDB for semantic search
+Vector store service using ChromaDB for semantic search (True RAG)
 """
 try:
     import chromadb
@@ -20,158 +20,228 @@ logger = structlog.get_logger()
 
 class VectorStore:
     """
-    Vector store for semantic search of exercises and recommendations
+    Vector store for semantic search of MSK wellness knowledge base.
+    Supports exercises, care programs, and products.
     """
-    
+
+
+    def _make_embedding_function(self):
+        """
+        Lightweight hash-based embedding function — zero downloads, instant startup.
+        Uses bag-of-words hashing for document similarity search.
+        Suitable for MSK wellness knowledge base keyword/phrase matching.
+        """
+        import hashlib
+        import math
+
+        class HashEmbeddingFunction:
+            """Bag-of-words embedding using hash buckets, no model download required."""
+
+            def name(self) -> str:  # ChromaDB v1.x calls name() as a method
+                return "hash_embedding_fn"
+
+            DIM = 512
+
+
+            def __call__(self, input):
+                result = []
+                for text in input:
+                    vec = [0.0] * self.DIM
+                    words = text.lower().split()
+                    for word in words:
+                        h = int(hashlib.md5(word.encode()).hexdigest(), 16)
+                        idx = h % self.DIM
+                        vec[idx] += 1.0
+                    # L2 normalize
+                    norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+                    vec = [x / norm for x in vec]
+                    result.append(vec)
+                return result
+
+        return HashEmbeddingFunction()
+
+
     def __init__(self):
-        """Initialize ChromaDB client"""
+        """Initialize ChromaDB client with a persistent collection"""
         if not CHROMADB_AVAILABLE:
-            logger.warning("ChromaDB not available, vector store disabled")
+            logger.warning("ChromaDB not available, vector store disabled - falling back to keyword search")
             self.client = None
             self.collection = None
             return
-            
-        self.client = chromadb.Client(Settings(
-            persist_directory=settings.CHROMA_PERSIST_DIR,
-            anonymized_telemetry=False,
-        ))
-        
-        # Get or create collection
-        self.collection = self.client.get_or_create_collection(
-            name=settings.CHROMA_COLLECTION_NAME,
-            metadata={"description": "Exercise recommendations for athletes"}
-        )
-        
-        logger.info("VectorStore initialized", collection=settings.CHROMA_COLLECTION_NAME)
-    
-    def index_exercises(self, exercises: List[Dict[str, Any]]) -> None:
+
+        try:
+            import os
+            os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
+
+            self.client = chromadb.PersistentClient(
+                path=settings.CHROMA_PERSIST_DIR,
+            )
+
+            embedding_fn = self._make_embedding_function()
+
+            # Get or create a single unified collection for all MSK knowledge
+            self.collection = self.client.get_or_create_collection(
+                name=settings.CHROMA_COLLECTION_NAME,
+                embedding_function=embedding_fn,
+                metadata={"description": "MSK Wellness knowledge base: exercises, care programs, and products"}
+            )
+
+            logger.info("VectorStore initialized", collection=settings.CHROMA_COLLECTION_NAME)
+        except Exception as e:
+            logger.error("Failed to initialize ChromaDB", error=str(e))
+            self.client = None
+            self.collection = None
+
+
+    @property
+    def is_available(self) -> bool:
+        return self.collection is not None
+
+    def get_count(self) -> int:
+        """Return total number of documents in the collection"""
+        if not self.is_available:
+            return 0
+        try:
+            return self.collection.count()
+        except Exception:
+            return 0
+
+    def index_documents(self, documents: List[Dict[str, Any]], doc_type: str) -> None:
         """
-        Index exercises into ChromaDB for semantic search
-        
+        Index any MSK knowledge document into ChromaDB.
+
         Args:
-            exercises: List of exercise dictionaries with id, name, description, etc.
+            documents: List of document dicts with 'id', 'text' (searchable), and 'metadata'.
+            doc_type: One of 'exercise', 'care_program', 'product'.
         """
-        if not self.collection:
+        if not self.is_available:
             logger.warning("Vector store not available, skipping indexing")
             return
-            
+
+        if not documents:
+            return
+
         try:
-            documents = []
+            doc_texts = []
             metadatas = []
             ids = []
-            
-            for exercise in exercises:
-                # Create searchable text
-                doc_text = f"{exercise['name']}. {exercise['description']}. "
-                doc_text += f"Category: {exercise['category']}. "
-                doc_text += f"Benefits: {', '.join(exercise.get('benefits', []))}. "
-                doc_text += f"Target areas: {', '.join(exercise.get('target_areas', []))}"
-                
-                documents.append(doc_text)
-                metadatas.append({
-                    "name": exercise['name'],
-                    "category": exercise['category'],
-                    "difficulty": exercise.get('difficulty', 'intermediate'),
-                    "duration": exercise.get('duration', ''),
-                })
-                ids.append(exercise['id'])
-            
-            # Add to ChromaDB
-            self.collection.add(
-                documents=documents,
+
+            for doc in documents:
+                doc_texts.append(doc["text"])
+                # Always inject doc_type into metadata so we can filter later
+                meta = {**doc.get("metadata", {}), "doc_type": doc_type}
+                metadatas.append(meta)
+                ids.append(f"{doc_type}_{doc['id']}")
+
+            # Use upsert so re-indexing won't fail on duplicate IDs
+            self.collection.upsert(
+                documents=doc_texts,
                 metadatas=metadatas,
                 ids=ids
             )
-            
-            logger.info("Exercises indexed successfully", count=len(exercises))
-            
+
+            logger.info(
+                "Documents indexed successfully",
+                doc_type=doc_type,
+                count=len(documents)
+            )
         except Exception as e:
-            logger.error("Error indexing exercises", error=str(e))
-            raise
-    
-    def search_exercises(
+            logger.error("Error indexing documents", doc_type=doc_type, error=str(e))
+
+    def search_documents(
         self,
         query: str,
-        n_results: int = 5,
-        category_filter: Optional[str] = None
+        doc_type: Optional[str] = None,
+        n_results: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Search for relevant exercises using semantic search
-        
+        Perform semantic search across the knowledge base.
+
         Args:
-            query: Natural language query
-            n_results: Number of results to return
-            category_filter: Optional category to filter by
-            
+            query: Natural language query string.
+            doc_type: Optional filter — 'exercise', 'care_program', or 'product'.
+            n_results: Max number of results to return.
+
         Returns:
-            List of matching exercises with metadata
+            List of dicts with 'id', 'metadata', and 'distance'.
         """
-        if not self.collection:
+        if not self.is_available:
             logger.warning("Vector store not available, returning empty results")
             return []
-            
+
         try:
-            where_filter = {"category": category_filter} if category_filter else None
-            
+            # Clamp n_results to collection size to avoid ChromaDB errors
+            total = self.get_count()
+            if total == 0:
+                return []
+            n_results = min(n_results, total)
+
+            where_filter = {"doc_type": doc_type} if doc_type else None
+
             results = self.collection.query(
                 query_texts=[query],
                 n_results=n_results,
                 where=where_filter
             )
-            
-            # Format results
-            exercises = []
-            if results['ids'] and len(results['ids']) > 0:
-                for i, exercise_id in enumerate(results['ids'][0]):
-                    exercises.append({
-                        'id': exercise_id,
-                        'metadata': results['metadatas'][0][i],
-                        'distance': results['distances'][0][i] if 'distances' in results else None
+
+            formatted = []
+            if results.get("ids") and len(results["ids"]) > 0:
+                for i, doc_id in enumerate(results["ids"][0]):
+                    formatted.append({
+                        "id": doc_id,
+                        "metadata": results["metadatas"][0][i],
+                        "document": results["documents"][0][i],
+                        "distance": results["distances"][0][i] if "distances" in results else None
                     })
-            
-            logger.info("Exercise search completed", query=query, results_count=len(exercises))
-            return exercises
-            
+
+            logger.info(
+                "Semantic search completed",
+                query=query[:60],
+                doc_type=doc_type,
+                results_count=len(formatted)
+            )
+            return formatted
+
         except Exception as e:
-            logger.error("Error searching exercises", error=str(e), query=query)
+            logger.error("Error searching documents", error=str(e), query=query)
             return []
-    
+
     def clear_collection(self) -> None:
-        """Clear all data from the collection"""
+        """Delete and recreate the collection (for re-indexing)"""
+        if not self.client:
+            return
         try:
             self.client.delete_collection(settings.CHROMA_COLLECTION_NAME)
             self.collection = self.client.get_or_create_collection(
                 name=settings.CHROMA_COLLECTION_NAME,
-                metadata={"description": "Exercise recommendations for athletes"}
+                metadata={"description": "MSK Wellness knowledge base: exercises, care programs, and products"}
             )
-            logger.info("Collection cleared successfully")
+            logger.info("Collection cleared and recreated")
         except Exception as e:
             logger.error("Error clearing collection", error=str(e))
-            raise
-    
+
     def get_stats(self) -> Dict[str, Any]:
-        """Get collection statistics"""
-        if not self.collection:
+        """Return collection statistics"""
+        if not self.is_available:
             return {
                 "collection_name": settings.CHROMA_COLLECTION_NAME,
-                "total_exercises": 0,
+                "total_documents": 0,
                 "persist_directory": settings.CHROMA_PERSIST_DIR,
                 "status": "disabled"
             }
-            
         try:
-            count = self.collection.count()
             return {
                 "collection_name": settings.CHROMA_COLLECTION_NAME,
-                "total_exercises": count,
-                "persist_directory": settings.CHROMA_PERSIST_DIR
+                "total_documents": self.collection.count(),
+                "persist_directory": settings.CHROMA_PERSIST_DIR,
+                "status": "active"
             }
         except Exception as e:
             logger.error("Error getting stats", error=str(e))
             return {}
 
 
-# Global instance
+# Global singleton
 _vector_store: Optional[VectorStore] = None
 
 

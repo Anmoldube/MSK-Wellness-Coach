@@ -49,23 +49,30 @@ class RecommendationEngine:
                        query=search_query, 
                        focus_areas=analysis['focus_areas'])
             
-            # Use vector search to find relevant exercises
-            if self.vector_store:
-                exercises = self.vector_store.search_exercises(
+            # Use vector search to find relevant exercises (RAG)
+            if self.vector_store and self.vector_store.is_available:
+                raw_results = self.vector_store.search_documents(
                     query=search_query,
+                    doc_type="exercise",
                     n_results=limit * 2  # Get more to filter
                 )
+                # Strip the "exercise_" prefix added during indexing
+                exercises = [
+                    {'id': r["id"].replace("exercise_", ""), 'metadata': r.get("metadata", {})}
+                    for r in raw_results
+                ]
             else:
                 # Fallback to basic filtering if vector store not available
                 logger.info("using_fallback_no_vector_store")
-                exercises = [{'id': ex.get('exercise_id', ''), 'metadata': {}} 
+                exercises = [{'id': ex.get('exercise_id', ''), 'metadata': {}}
                            for ex in self.kb.exercises[:limit * 2]]
-            
+
             # Enhance with detailed information and personalization
             recommendations = []
             for ex in exercises[:limit]:
                 # Get full exercise details from knowledge base
                 full_exercise = self._get_exercise_details(ex['id'])
+
                 if full_exercise:
                     # Add personalization
                     full_exercise['recommendation_reason'] = self._generate_reason(

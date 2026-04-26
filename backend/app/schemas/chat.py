@@ -40,10 +40,12 @@ class ChatResponse(BaseModel):
     citations: Optional[List[str]] = None
     suggested_questions: Optional[List[str]] = None
     confidence_score: Optional[float] = None
+    rag_sources: Optional[List[Dict[str, Any]]] = None
 
 
 class ConversationSummary(BaseModel):
     conversation_id: str
+    title: Optional[str] = None
     started_at: datetime
     message_count: int
     last_message_preview: Optional[str] = None

@@ -191,3 +191,135 @@ async def delete_report(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete report"
         )
+
+
+# ---------------------------------------------------------------------------
+# Document Upload & Indexing Endpoints (RAG)
+# ---------------------------------------------------------------------------
+
+@router.post("/upload/document/{user_id}")
+async def upload_document(
+    user_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a document (PDF, TXT, CSV) for RAG indexing.
+    The file is parsed into page-level chunks and indexed into ChromaDB.
+    """
+    from app.services.document_service import get_document_service
+    from app.models.document import Document as DocumentModel
+
+    try:
+        # Validate user exists
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Validate extension
+        file_ext = Path(file.filename).suffix.lower()
+        allowed = [".pdf", ".txt", ".csv"]
+        if file_ext not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type '{file_ext}'. Allowed: {', '.join(allowed)}",
+            )
+
+        # Read and save file
+        content = await file.read()
+        if len(content) > settings.MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+
+        doc_id = str(uuid.uuid4())
+        user_dir = Path(settings.UPLOAD_DIR) / user_id / "documents"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        file_path = user_dir / f"{doc_id}{file_ext}"
+
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(content)
+
+        # Create DB record
+        doc_record = DocumentModel(
+            id=doc_id,
+            user_id=user_id,
+            filename=file.filename,
+            file_type=file_ext.lstrip("."),
+            status="processing",
+        )
+        db.add(doc_record)
+        await db.flush()
+
+        # Ingest & index into ChromaDB
+        doc_service = get_document_service()
+        result_info = doc_service.ingest_file(
+            file_path=str(file_path),
+            filename=file.filename,
+            user_id=user_id,
+            doc_id=doc_id,
+        )
+
+        doc_record.page_count = result_info.get("page_count", 0)
+        doc_record.chunk_count = result_info.get("chunk_count", 0)
+        doc_record.status = result_info.get("status", "failed")
+        await db.commit()
+
+        return {
+            "doc_id": doc_id,
+            "filename": file.filename,
+            "status": doc_record.status,
+            "page_count": doc_record.page_count,
+            "chunk_count": doc_record.chunk_count,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("document_upload_failed", error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to upload document")
+
+
+@router.get("/upload/documents/{user_id}")
+async def get_user_documents(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Get all indexed documents for a user."""
+    from app.models.document import Document as DocumentModel
+
+    result = await db.execute(
+        select(DocumentModel)
+        .where(DocumentModel.user_id == user_id)
+        .order_by(DocumentModel.created_at.desc())
+    )
+    docs = result.scalars().all()
+    return [
+        {
+            "doc_id": d.id,
+            "filename": d.filename,
+            "file_type": d.file_type,
+            "page_count": d.page_count,
+            "chunk_count": d.chunk_count,
+            "status": d.status,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in docs
+    ]
+
+
+@router.delete("/upload/document/{doc_id}")
+async def delete_document(doc_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a document and its ChromaDB chunks."""
+    from app.services.document_service import get_document_service
+    from app.models.document import Document as DocumentModel
+
+    result = await db.execute(select(DocumentModel).where(DocumentModel.id == doc_id))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Remove chunks from ChromaDB
+    get_document_service().delete_document(doc_id)
+
+    # Delete DB record
+    await db.delete(doc)
+    await db.commit()
+    return {"status": "deleted", "doc_id": doc_id}
