@@ -1,4 +1,4 @@
-# MSK Wellness AI Chatbot 🎮💪
+# RAG BASED MSK Wellness AI Chatbot 🎮💪
 
 An intelligent AI-powered chatbot that analyzes **game/sport performance data** and provides **personalized exercise recommendations** to help athletes and gamers improve their physical performance.
 
